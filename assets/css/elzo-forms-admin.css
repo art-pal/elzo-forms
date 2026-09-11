@@ -330,6 +330,334 @@
     line-height: 1.3;
 }
 
+/* Informative Automations preview shown by the free plugin. */
+.elzo-forms-automation-upsell {
+    width: 100%;
+    max-width: 860px;
+    margin: 8px 0 4px;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid #dcdcde;
+    border-radius: 9px;
+    background: #fff;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07);
+    color: #3c434a;
+}
+
+.elzo-forms-automation-upsell-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 24px;
+    border-bottom: 1px solid #e2e4e7;
+    background: linear-gradient(135deg, rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.11), rgba(255, 255, 255, 0) 72%);
+}
+
+.elzo-forms-automation-upsell-mark {
+    display: flex;
+    flex: 0 0 48px;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 11px;
+    background: var(--wp-admin-theme-color, #0073aa);
+    box-shadow: 0 6px 16px rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.24);
+    color: #fff;
+}
+
+.elzo-forms-automation-upsell-mark .elzo-forms-field-type-icon {
+    width: 24px;
+    height: 24px;
+    color: inherit;
+}
+
+.elzo-forms-automation-upsell-heading {
+    min-width: 0;
+}
+
+.elzo-forms-automation-upsell-eyebrow {
+    display: inline-block;
+    margin-bottom: 3px;
+    color: var(--wp-admin-theme-color, #0073aa);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    text-transform: uppercase;
+}
+
+.elzo-forms-automation-upsell-eyebrow:hover,
+.elzo-forms-automation-upsell-eyebrow:focus {
+    color: var(--wp-admin-theme-color, #0073aa);
+    text-decoration: underline;
+}
+
+.elzo-forms-automation-upsell-title,
+#poststuff .elzo-forms-automation-upsell-title,
+.postbox .inside .elzo-forms-automation-upsell-title,
+.wrap .elzo-forms-automation-upsell-title {
+    margin: 0;
+    padding: 0;
+    color: #1d2327;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.elzo-forms-automation-upsell-description {
+    max-width: 680px;
+    margin: 8px 0 0;
+    color: #50575e;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.elzo-forms-automation-upsell-flow {
+    display: flex;
+    align-items: stretch;
+    padding: 22px 24px;
+}
+
+.elzo-forms-automation-upsell-stage {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid #e2e4e7;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+}
+
+.elzo-forms-automation-upsell-stage-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px;
+    border-bottom: 1px solid #e2e4e7;
+    border-radius: 8px 8px 0 0;
+    background: #f6f7f7;
+}
+
+.elzo-forms-automation-upsell-stage.is-if .elzo-forms-automation-upsell-stage-header {
+    background: rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.07);
+}
+
+.elzo-forms-automation-upsell-stage-header strong,
+.elzo-forms-automation-upsell-stage-header small {
+    display: block;
+}
+
+.elzo-forms-automation-upsell-stage-header strong {
+    color: #1d2327;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+.elzo-forms-automation-upsell-stage-header small {
+    margin-top: 2px;
+    color: #646970;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.elzo-forms-automation-upsell-stage-keyword {
+    display: inline-flex;
+    flex: 0 0 46px;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    box-sizing: border-box;
+    border-radius: 14px;
+    background: var(--wp-admin-theme-color, #0073aa);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.06em;
+}
+
+.elzo-forms-automation-upsell-stage.is-then .elzo-forms-automation-upsell-stage-keyword {
+    background: #3c434a;
+}
+
+.elzo-forms-automation-upsell-stage-list {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 5px 13px;
+    list-style: none;
+}
+
+.elzo-forms-automation-upsell-stage-list li {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    padding: 9px 2px;
+    color: #3c434a;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.elzo-forms-automation-upsell-stage-list li + li {
+    border-top: 1px solid #f0f0f1;
+}
+
+.elzo-forms-automation-upsell-stage-icon {
+    display: flex;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.07);
+    color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-automation-upsell-stage-icon .elzo-forms-field-type-icon {
+    width: 14px;
+    height: 14px;
+    color: inherit;
+}
+
+.elzo-forms-automation-upsell-flow-connector {
+    position: relative;
+    display: flex;
+    flex: 0 0 58px;
+    align-items: center;
+    justify-content: center;
+    color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-automation-upsell-flow-line {
+    position: absolute;
+    right: 8px;
+    left: 8px;
+    height: 1px;
+    background: rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.28);
+}
+
+.elzo-forms-automation-upsell-flow-arrow {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.24);
+    border-radius: 50%;
+    background: #fff;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.elzo-forms-automation-upsell-assurance {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 24px 22px;
+    padding: 11px 13px;
+    border-radius: 7px;
+    background: rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.07);
+    color: #3c434a;
+}
+
+.elzo-forms-automation-upsell-assurance-icon {
+    display: flex;
+    flex: 0 0 20px;
+    color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-automation-upsell-assurance-icon .elzo-forms-field-type-icon {
+    color: inherit;
+}
+
+.elzo-forms-automation-upsell-assurance p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.elzo-forms-automation-upsell-footer {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 24px;
+    border-top: 1px solid #dcdcde;
+    background: #f6f7f7;
+}
+
+.elzo-forms-automation-upsell-footer > span {
+    color: #646970;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+@media (max-width: 782px) {
+    .elzo-forms-automation-upsell-header,
+    .elzo-forms-automation-upsell-flow,
+    .elzo-forms-automation-upsell-footer {
+        padding-right: 18px;
+        padding-left: 18px;
+    }
+
+    .elzo-forms-automation-upsell-flow {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .elzo-forms-automation-upsell-flow-connector {
+        flex-basis: 46px;
+    }
+
+    .elzo-forms-automation-upsell-flow-line {
+        top: 7px;
+        bottom: 7px;
+        left: 50%;
+        width: 1px;
+        height: auto;
+    }
+
+    .elzo-forms-automation-upsell-flow-arrow {
+        transform: rotate(90deg);
+    }
+
+    .elzo-forms-automation-upsell-assurance {
+        margin-right: 18px;
+        margin-left: 18px;
+    }
+
+    .elzo-forms-automation-upsell-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .elzo-forms-automation-upsell-header {
+        gap: 12px;
+    }
+
+    .elzo-forms-automation-upsell-mark {
+        flex-basis: 42px;
+        width: 42px;
+        height: 42px;
+    }
+
+    .elzo-forms-automation-upsell-title,
+    #poststuff .elzo-forms-automation-upsell-title,
+    .postbox .inside .elzo-forms-automation-upsell-title,
+    .wrap .elzo-forms-automation-upsell-title {
+        font-size: 19px;
+    }
+}
+
 /* FORM */
 
 .elzo-forms-field {
@@ -484,6 +812,32 @@ button > .elzo-icon {
 
 .elzo-forms-field-logic-group-rule-value {
     flex: 1 0 0%;
+}
+
+.elzo-forms-field-logic-unavailable-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0;
+    padding: 6px 8px;
+    border-left: 4px solid #dba617;
+    background: #fff8e5;
+    color: #8b6d26;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.elzo-forms-field-logic-unavailable-notice[hidden] {
+    display: none;
+}
+
+.elzo-forms-field-logic-unavailable-notice .dashicons {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: #dba617;
+    font-size: 16px;
+    line-height: 18px;
 }
 
 .elzo-forms-logic-label {
@@ -1004,10 +1358,13 @@ button > .elzo-icon {
     border-bottom: 1px solid #dcdcde;
 }
 
-.elzo-forms-module-modal-header h2 {
+.elzo-forms-module-modal-header h2,
+#poststuff .elzo-forms-module-modal-header h2 {
     margin: 0;
+    padding: 0;
     font-size: 18px;
     font-weight: 600;
+    line-height: 1.3;
 }
 
 .elzo-forms-module-modal-close {
@@ -1132,4 +1489,642 @@ button > .elzo-icon {
     margin-top: 6px;
     white-space: normal;
     word-break: break-all;
+}
+/* CONTENT PICKER */
+
+.elzo-forms-content-picker {
+    position: relative;
+    min-width: 0;
+}
+
+.elzo-forms-content-picker-control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-height: 40px;
+    padding: 6px 7px 5px !important;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    background-color: #fff;
+    cursor: text;
+    transition: border-color 0.1s ease, box-shadow 0.1s ease;
+    box-sizing: border-box;
+}
+
+.elzo-forms-content-picker-control:hover {
+  color: #1e1e1e;
+  border-color: #1e1e1e;
+}
+
+.elzo-forms-content-picker-control:focus-within {
+    border-color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-content-picker.is-open .elzo-forms-content-picker-control {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.elzo-forms-content-picker-selection {
+    display: contents;
+}
+
+.elzo-forms-content-picker-control .elzo-forms-content-picker-search,
+.elzo-forms-content-picker-control .elzo-forms-content-picker-search:focus {
+    flex: 1 1 100px;
+    width: 100%;
+    min-width: 64px;
+    min-height: 22px;
+    margin: 0;
+    padding: 1px 2px;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    line-height: 1.5;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.elzo-forms-content-picker-control .elzo-forms-content-picker-search::-webkit-search-cancel-button {
+    display: none;
+}
+
+.elzo-forms-content-picker.has-selection:not(.has-query) .elzo-forms-content-picker-search {
+    flex: 0 0 8px;
+    width: 8px;
+    min-width: 8px;
+    padding-right: 0;
+    padding-left: 0;
+}
+
+.elzo-forms-content-picker-token {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: calc(100% - 12px);
+    padding: 2px 5px 2px 7px;
+    border: 1px solid #dcdcde;
+    border-radius: 3px;
+    background-color: #f0f0f1;
+    color: #2c3338;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.elzo-forms-content-picker-token.is-unresolved {
+    border-style: dashed;
+    color: #b32d2e;
+}
+
+.elzo-forms-content-picker-token-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.elzo-forms-content-picker-token-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #646970;
+    cursor: pointer;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.elzo-forms-content-picker-token-remove:hover,
+.elzo-forms-content-picker-token-remove:focus {
+    color: #b32d2e;
+}
+
+.elzo-forms-content-picker-results {
+    position: absolute;
+    top: calc(100% - 1px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 240px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    border: 1px solid #c3c4c7;
+    border-radius: 0 0 4px 4px;
+    background-color: #fff;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    list-style: none;
+}
+
+.elzo-forms-content-picker.is-open .elzo-forms-content-picker-results {
+    border-color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-content-picker-result {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.elzo-forms-content-picker-result:hover,
+.elzo-forms-content-picker-result.is-active {
+    background-color: #f6f7f7;
+}
+
+.elzo-forms-content-picker-result[aria-selected="true"] {
+    background-color: #f6f7f7;
+    box-shadow: inset 3px 0 var(--wp-admin-theme-color, #0073aa);
+    font-weight: 600;
+}
+
+.elzo-forms-content-picker-result-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.elzo-forms-content-picker-result-meta {
+    flex: 0 0 auto;
+    color: #787c82;
+    font-size: 11px;
+}
+
+.elzo-forms-content-picker-status {
+    margin: 0;
+}
+
+.elzo-forms-content-picker-status:empty {
+    display: none;
+}
+
+/* The value control behind a picker still carries the saved value. */
+.elzo-forms-field-logic-group-rule-value-input[hidden] {
+    display: none;
+}
+
+/* FIELD PICKER */
+
+.elzo-forms-field-picker {
+    position: absolute;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    width: 300px;
+    box-sizing: border-box;
+    border: 1px solid #c3c4c7;
+    border-radius: 5px;
+    background-color: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    color: #1d2327;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.elzo-forms-field-picker[hidden],
+.elzo-forms-field-picker [hidden] {
+    display: none;
+}
+
+/* Opened above its button: the bottom edge stays on the button as the list shortens. */
+.elzo-forms-field-picker.is-above {
+    transform: translateY(-100%);
+}
+
+.elzo-forms-field-picker-search {
+    position: relative;
+    flex: 0 0 auto;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.elzo-forms-field-picker-search:focus-within {
+    border-bottom-color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-field-picker-search .elzo-icon {
+    position: absolute;
+    top: 50%;
+    inset-inline-start: 12px;
+    color: #787c82;
+    font-size: 16px;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.elzo-forms-field-picker .elzo-forms-field-picker-search-input[type="search"],
+.elzo-forms-field-picker .elzo-forms-field-picker-search-input[type="search"]:focus {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 10px 12px;
+    padding-inline-start: 36px;
+    border: 0;
+    border-radius: 5px 5px 0 0;
+    background: transparent;
+    box-shadow: none;
+    outline: 0;
+    color: inherit;
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.elzo-forms-field-picker-search-input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.elzo-forms-field-picker-list {
+    position: relative;
+    flex: 1 1 auto;
+    max-height: 360px;
+    padding: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.elzo-forms-field-picker-group + .elzo-forms-field-picker-group {
+    margin-top: 4px;
+}
+
+.elzo-forms-field-picker-group-label {
+    padding: 8px 8px 4px;
+    color: #646970;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: default;
+    user-select: none;
+}
+
+.elzo-forms-field-picker-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.elzo-forms-field-picker-option.is-active {
+    background-color: rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.08);
+}
+
+/* The bar marks the active option by shape, not by color alone. */
+.elzo-forms-field-picker-option.is-active::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    inset-inline-start: 0;
+    width: 3px;
+    border-radius: 2px;
+    background-color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-field-type-icon {
+    display: block;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    color: #50575e;
+}
+
+.elzo-forms-field-picker-option.is-active .elzo-forms-field-type-icon {
+    color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-field-picker-option-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* The field's current type, when the picker changes an existing field. */
+.elzo-forms-field-picker-option.is-current .elzo-forms-field-picker-option-label {
+    font-weight: 600;
+}
+
+/* Type control of a field: opens the field picker. */
+.elzo-forms-wrapper .elzo-forms-field-type-button,
+.elzo-forms-wrapper .elzo-forms-condition-type-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 7px 8px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #fff;
+    color: #1d2327;
+    font: inherit;
+    line-height: 1.825;
+    text-align: start;
+    cursor: pointer;
+}
+
+.elzo-forms-wrapper .elzo-forms-field-type-button:hover,
+.elzo-forms-wrapper .elzo-forms-condition-type-button:hover {
+    border-color: #1e1e1e;
+}
+
+.elzo-forms-wrapper .elzo-forms-field-type-button:focus,
+.elzo-forms-wrapper .elzo-forms-field-type-button[aria-expanded="true"],
+.elzo-forms-wrapper .elzo-forms-condition-type-button:focus,
+.elzo-forms-wrapper .elzo-forms-condition-type-button[aria-expanded="true"] {
+    border-color: var(--wp-admin-theme-color, #0073aa);
+    outline: none;
+}
+
+.elzo-forms-wrapper .elzo-forms-field-type-button:focus-visible,
+.elzo-forms-wrapper .elzo-forms-condition-type-button:focus-visible {
+    box-shadow: 0 0 0 1px var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-field-type-button-label,
+.elzo-forms-condition-type-button-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.elzo-forms-field-type-button .elzo-icon,
+.elzo-forms-condition-type-button .elzo-icon {
+    flex: 0 0 auto;
+    color: #787c82;
+    font-size: 16px;
+}
+
+.elzo-forms-pro-badge {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    padding: 2px 5px;
+    border-radius: 9px;
+    background-color: var(--wp-admin-theme-color, #0073aa);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+}
+
+/* Lightweight generic admin modal used by contextual builder information. */
+.elzo-forms-admin-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.elzo-forms-admin-modal[hidden] {
+    display: none;
+}
+
+.elzo-forms-admin-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(29, 35, 39, 0.58);
+}
+
+.elzo-forms-admin-modal-dialog {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    max-height: calc(100vh - 40px);
+    overflow: auto;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 9px;
+    background: #fff;
+    box-shadow: 0 18px 55px rgba(0, 0, 0, 0.24);
+}
+
+.elzo-forms-admin-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 20px 22px;
+    border-bottom: 1px solid #dcdcde;
+    background: linear-gradient(135deg, rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.1), rgba(255, 255, 255, 0) 72%);
+}
+
+.elzo-forms-admin-modal-header .elzo-forms-admin-modal-title,
+#poststuff .elzo-forms-admin-modal-header .elzo-forms-admin-modal-title {
+    margin: 0;
+    padding: 0;
+    color: #1d2327;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.elzo-forms-admin-modal-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    margin-inline-start: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #50575e;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.elzo-forms-admin-modal-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #1d2327;
+}
+
+.elzo-forms-admin-modal-close:focus-visible {
+    outline: 2px solid var(--wp-admin-theme-color, #0073aa);
+    outline-offset: 1px;
+}
+
+.elzo-forms-admin-modal-body {
+    padding: 22px;
+}
+
+.elzo-forms-admin-modal-body p:first-child {
+    margin-top: 0;
+}
+
+.elzo-forms-admin-modal-body p:last-child {
+    margin-bottom: 0;
+}
+
+.elzo-forms-admin-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 22px;
+    border-top: 1px solid #dcdcde;
+    background: #f6f7f7;
+}
+
+.elzo-forms-condition-pro-modal-mark {
+    display: flex;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: var(--wp-admin-theme-color, #0073aa);
+    box-shadow: 0 5px 14px rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.22);
+    color: #fff;
+}
+
+.elzo-forms-condition-pro-modal-mark .elzo-forms-field-type-icon {
+    width: 22px;
+    height: 22px;
+    color: inherit;
+}
+
+.elzo-forms-condition-pro-modal-heading {
+    min-width: 0;
+}
+
+.elzo-forms-condition-pro-modal-eyebrow {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--wp-admin-theme-color, #0073aa);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.elzo-forms-condition-pro-modal-intro {
+    margin: 0 0 16px;
+    color: #3c434a;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.elzo-forms-condition-pro-features {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.elzo-forms-condition-pro-feature {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 11px;
+    border: 1px solid #e2e4e7;
+    border-radius: 6px;
+    background: #f6f7f7;
+}
+
+.elzo-forms-condition-pro-feature-icon {
+    display: flex;
+    flex: 0 0 32px;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(var(--wp-admin-theme-color--rgb, 0, 116, 170), 0.14);
+    color: var(--wp-admin-theme-color, #0073aa);
+}
+
+.elzo-forms-condition-pro-feature-icon .elzo-forms-field-type-icon {
+    color: inherit;
+}
+
+.elzo-forms-condition-pro-feature strong,
+.elzo-forms-condition-pro-feature small {
+    display: block;
+}
+
+.elzo-forms-condition-pro-feature strong {
+    color: #1d2327;
+    font-size: 13px;
+    line-height: 1.3;
+}
+
+.elzo-forms-condition-pro-feature small {
+    margin-top: 2px;
+    color: #646970;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.elzo-forms-condition-pro-modal-note {
+    margin: 14px 0 0;
+    color: #646970;
+    font-size: 12px;
+}
+
+@media (max-width: 600px) {
+    .elzo-forms-admin-modal {
+        padding: 20px 10px;
+    }
+
+    .elzo-forms-admin-modal-dialog {
+        max-height: calc(100vh - 40px);
+    }
+
+    .elzo-forms-admin-modal-footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .elzo-forms-condition-pro-features {
+        grid-template-columns: 1fr;
+    }
+}
+
+.elzo-forms-field-picker-status {
+    margin: 0;
+    padding: 14px 12px;
+    color: #646970;
+    text-align: center;
+}
+
+.elzo-forms-field-picker-status:empty {
+    display: none;
+}
+
+@media (max-width: 782px) {
+    .elzo-forms-field-picker .elzo-forms-field-picker-search-input[type="search"],
+    .elzo-forms-field-picker .elzo-forms-field-picker-search-input[type="search"]:focus {
+        font-size: 16px;
+    }
+
+    .elzo-forms-field-picker-option {
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+}
+
+@media (forced-colors: active) {
+    .elzo-forms-field-picker-option.is-active {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
 }

@@ -39,6 +39,9 @@ class Form implements \ArrayAccess {
     /** @var array|null Cached merged styles */
     private $cached_styles = null;
 
+    /** @var array<string, bool> HTML IDs reserved during the current request. */
+    private static $rendered_html_ids = [];
+
     /**
      * Constructor.
      *
@@ -444,15 +447,15 @@ class Form implements \ArrayAccess {
     }
 
     /**
-     * Check if current user can view this form.
+     * Check if the current user can interact with this form.
      *
-     * Published forms can be viewed by anyone.
-     * Non-published forms require read_private_posts capability.
+     * Published forms are public. Non-published forms require permission to
+     * edit the specific form, which also supports author-owned drafts.
      *
-     * @return bool True if current user can view the form
+     * @return bool True if the current user can interact with the form
      */
-    public function can_view(): bool {
-        if (!$this->post) {
+    public function can_interact(): bool {
+        if (!$this->post || $this->post->post_type !== 'elzo_form') {
             return false;
         }
 
@@ -460,7 +463,53 @@ class Form implements \ArrayAccess {
             return true;
         }
 
-        return current_user_can('read_private_posts');
+        return current_user_can('edit_post', $this->id);
+    }
+
+    /**
+     * Check if the current user can view this form.
+     *
+     * Kept as a compatibility alias for integrations using the original API.
+     *
+     * @return bool True if the current user can view the form
+     */
+    public function can_view(): bool {
+        return $this->can_interact();
+    }
+
+    /**
+     * Reduce a max_width rendering attribute to one CSS length.
+     *
+     * The value is written into an inline style and comes from shortcode and
+     * block authors, so only a positive number with an optional length or
+     * percentage unit is kept. A number without a unit is read as pixels.
+     *
+     * @param mixed $value Requested maximum width.
+     * @return string CSS length, or an empty string when the value is not one.
+     */
+    private static function sanitize_max_width($value): string {
+        if (!is_scalar($value)) {
+            return '';
+        }
+
+        $value = strtolower(trim((string) $value));
+        if (!preg_match('/^(\d+(?:\.\d+)?|\.\d+)(px|%|rem|em|vw|vh|vmin|vmax|ch|ex)?$/', $value, $matches) || (float) $matches[1] <= 0) {
+            return '';
+        }
+
+        return $matches[1] . (isset($matches[2]) && $matches[2] !== '' ? $matches[2] : 'px');
+    }
+
+    /**
+     * Reduce a text_align rendering attribute to a CSS text-align keyword.
+     *
+     * @param mixed $value Requested text alignment.
+     * @return string Keyword, or an empty string when the value is not one.
+     */
+    private static function sanitize_text_align($value): string {
+        $value = is_scalar($value) ? strtolower(trim((string) $value)) : '';
+
+        return in_array($value, ['left', 'center', 'right', 'justify', 'start', 'end'], true) ? $value : '';
     }
 
     /**
@@ -471,9 +520,12 @@ class Form implements \ArrayAccess {
      *
      * @param array $atts Rendering attributes:
      *                    - echo (bool): Echo output directly instead of returning
-     *                    - max_width (string): Maximum form width (e.g., '600px' or 600)
-     *                    - form_align (string): Form alignment ('left', 'center', 'right')
-     *                    - text_align (string): Text alignment ('left', 'center', 'right')
+     *                    - max_width (string|int): Maximum form width: a number of pixels,
+     *                      or a CSS length such as '600px', '40rem' or '80%'
+     *                    - form_align (string): Form alignment ('left', 'right'; any other
+     *                      non-empty value centers the form)
+     *                    - text_align (string): Text alignment ('left', 'center', 'right',
+     *                      'justify', 'start', 'end')
      * @return string Form HTML output (empty string if echo is true)
      */
     public function render(array $atts = []): string {
@@ -489,21 +541,22 @@ class Form implements \ArrayAccess {
             return '<p>' . esc_html__('Form not found', 'elzo-forms') . '</p>';
         }
 
-        // Check viewing permissions
-        if (!$this->can_view()) {
+        // Check interaction permissions
+        if (!$this->can_interact()) {
             return '';
         }
 
-        // Build wrapper styles
+        // Build wrapper styles. A layout value that is not a plain length or
+        // keyword is dropped, so an attribute cannot add declarations of its own.
         $form_wrapper_styles = '';
 
-        if (!empty($atts['max_width'])) {
-            $form_wrapper_max_width = esc_attr(is_numeric($atts['max_width']) ? $atts['max_width'] . 'px' : $atts['max_width']);
+        $form_wrapper_max_width = self::sanitize_max_width($atts['max_width']);
+        if ($form_wrapper_max_width !== '') {
             $form_wrapper_styles .= 'max-width: ' . $form_wrapper_max_width . ';';
         }
 
         if (!empty($atts['form_align'])) {
-            $form_wrapper_form_align = esc_attr($atts['form_align']);
+            $form_wrapper_form_align = is_scalar($atts['form_align']) ? (string) $atts['form_align'] : '';
             if ($form_wrapper_form_align === 'left') {
                 $form_wrapper_styles .= 'margin-right: auto;';
             } elseif ($form_wrapper_form_align === 'right') {
@@ -513,8 +566,8 @@ class Form implements \ArrayAccess {
             }
         }
 
-        if (!empty($atts['text_align'])) {
-            $form_wrapper_text_align = esc_attr($atts['text_align']);
+        $form_wrapper_text_align = self::sanitize_text_align($atts['text_align']);
+        if ($form_wrapper_text_align !== '') {
             $form_wrapper_styles .= 'text-align: ' . $form_wrapper_text_align . ';';
         }
 
@@ -529,9 +582,16 @@ class Form implements \ArrayAccess {
         $steps_total = count($steps);
 
         // Compute form HTML attributes
-        $form_custom_id = !empty($form_settings['form_custom_id']) ? $form_settings['form_custom_id'] : null;
-        $form_custom_class = !empty($form_settings['form_custom_class']) ? $form_settings['form_custom_class'] : null;
-        $form_attr_id = $form_custom_id ? $form_custom_id : "elzo-forms-form-{$form_id}";
+        $form_custom_id = !empty($form_settings['form_custom_id']) && is_scalar($form_settings['form_custom_id'])
+            ? trim((string) $form_settings['form_custom_id'])
+            : '';
+        $form_custom_class = !empty($form_settings['form_custom_class']) && is_scalar($form_settings['form_custom_class'])
+            ? trim((string) $form_settings['form_custom_class'])
+            : '';
+        $requested_form_attr_id = $form_custom_id ? $form_custom_id : "elzo-forms-form-{$form_id}";
+        $form_id_reservation = self::reserve_html_id($requested_form_attr_id);
+        $form_attr_id = $form_id_reservation['id'];
+        $form_instance_suffix = $form_id_reservation['suffix'];
         $form_attr_class = 'elzo-forms-form elzo-forms-input-style-' . ($style_settings['input_style'] ?? 'default') . ($form_custom_class ? ' ' . $form_custom_class : '');
 
         // Boot modules for this form
@@ -568,7 +628,7 @@ class Form implements \ArrayAccess {
             'form_id', 'form_post', 'form_object', 'form_settings',
             'texts_settings', 'style_settings', 'steps', 'steps_total',
             'form_wrapper_styles', 'form_attr_id', 'form_attr_class',
-            'form_data_attrs_string', 'atts'
+            'form_data_attrs_string', 'form_instance_suffix', 'atts'
         ));
 
         if ($atts['echo']) {
@@ -578,6 +638,31 @@ class Form implements \ArrayAccess {
         }
 
         return $output;
+    }
+
+    /**
+     * Reserve a unique DOM ID while preserving the first rendered value.
+     *
+     * Blocks and shortcodes may embed the same form more than once. The hidden
+     * form ID remains unchanged; only duplicate HTML IDs receive a suffix.
+     *
+     * @return array{id:string,suffix:string} Reserved ID and its instance suffix.
+     */
+    private static function reserve_html_id(string $requested_id): array {
+        $candidate = $requested_id;
+        $suffix = 2;
+
+        while (isset(self::$rendered_html_ids[$candidate])) {
+            $candidate = $requested_id . '-' . $suffix;
+            $suffix++;
+        }
+
+        self::$rendered_html_ids[$candidate] = true;
+
+        return [
+            'id' => $candidate,
+            'suffix' => $candidate === $requested_id ? '' : '-' . ($suffix - 1),
+        ];
     }
 
     /**

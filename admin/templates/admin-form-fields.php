@@ -84,7 +84,7 @@
                         } ?>
                     </div>
                     <div class="elzo-forms-step-fields-footer">
-                        <button type="button" class="button button-primary elzo-forms-add-field-button"><?php esc_html_e('Add Field', 'elzo-forms'); ?></button>
+                        <button type="button" class="button button-primary elzo-forms-add-field-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="elzo-forms-field-picker"><?php esc_html_e('Add Field', 'elzo-forms'); ?></button>
                         <div class="elzo-forms-step-fields-footer-step-actions">
                             <button type="button" class="button elzo-forms-step-duplicate-button"><?php esc_html_e('Duplicate Step', 'elzo-forms'); ?></button>
                             <button type="button" class="button elzo-forms-step-remove-button" <?php echo $steps_total > 1 ? '' : 'style="display:none"'; ?>><?php esc_html_e('Remove Step', 'elzo-forms'); ?></button>
@@ -97,4 +97,6 @@
     <div class="elzo-forms-repeater-footer elzo-forms-steps-footer">
         <button type="button" class="button button-primary elzo-forms-add-step-button"><?php esc_html_e('Add Step', 'elzo-forms'); ?></button>
     </div>
+    <?php include plugin_dir_path(__DIR__) . 'templates/admin-form-field-picker.php'; ?>
+    <?php require plugin_dir_path(__DIR__) . 'templates/admin-condition-type-picker.php'; ?>
 </div>

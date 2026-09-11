@@ -631,6 +631,25 @@ function elzo_forms_admin_enqueue_scripts() {
          */
         'logicLabelMaxLength' => apply_filters('elzo_forms_logic_label_max_length', 50),
         'selectFieldPlaceholder' => __('Select a field', 'elzo-forms'),
+        // Count operators compare a number of values, so their value input is
+        // a number rather than the free text every other operator takes.
+        'logicCountOperators' => \ElzoForms\Utilities\Conditional_Logic::get_count_operators(),
+        'contentPostTypes' => \ElzoForms\Utilities\Admin::get_content_post_type_options(),
+        'contentPicker' => array(
+            'searchPlaceholder' => __('Search...', 'elzo-forms'),
+            'searchHint' => __('Type at least 2 characters to search.', 'elzo-forms'),
+            'loading' => __('Searching...', 'elzo-forms'),
+            'noResults' => __('Nothing found.', 'elzo-forms'),
+            'failed' => __('Search failed.', 'elzo-forms'),
+            /* translators: %d: Post ID of content that no longer exists or is not readable. */
+            'unavailable' => __('#%d (unavailable)', 'elzo-forms'),
+            'remove' => __('Remove', 'elzo-forms'),
+            'clear' => __('Clear selection', 'elzo-forms'),
+            'emptySingle' => __('Nothing selected', 'elzo-forms'),
+            'selectPostType' => __('Select a post type', 'elzo-forms'),
+            /* translators: %s: Post type slug that is no longer registered. */
+            'postTypeUnavailable' => __('%s (unavailable)', 'elzo-forms'),
+        ),
         'submissionSpamStatus' => $submission_spam_status,
         'texts' => array(
             'removeFieldConfirmation' => __('Are you sure you want to remove this field?', 'elzo-forms'),
@@ -646,7 +665,7 @@ function elzo_forms_meta_box() {
     // Form Data meta box
     add_meta_box(
         'elzo-forms-data-meta-box',
-        'Form Data',
+        __('Form Data', 'elzo-forms'),
         'elzo_forms_data_meta_box_callback',
         'elzo_form',
         'normal',
@@ -656,7 +675,7 @@ function elzo_forms_meta_box() {
     // Submission Data meta box
     add_meta_box(
         'elzo-forms-submission-data-meta-box',
-        'Submission Data',
+        __('Submission Data', 'elzo-forms'),
         'elzo_submission_data_meta_box_callback',
         'elzo_submission',
         'normal',
@@ -666,7 +685,7 @@ function elzo_forms_meta_box() {
     // Submission Author meta box
     add_meta_box(
         'elzo-forms-submitter-info-meta-box',
-        'Submitter Info',
+        __('Submitter Info', 'elzo-forms'),
         'elzo_submitter_info_meta_box_callback',
         'elzo_submission',
         'side',
@@ -1182,7 +1201,6 @@ function elzo_forms_save_meta_box_data($post_id) {
                         } else if($key == 'rules'){
                             // Loop through each group and sanitize condition items
                             if(!empty($value) && is_array($value)){
-                                $valid_types = array_keys(\ElzoForms\Utilities\Conditional_Logic::get_field_condition_types());
                                 foreach($value as $group_index => $group){
                                     if(!is_array($group)){
                                         unset($field[$key][$group_index]);
@@ -1193,8 +1211,15 @@ function elzo_forms_save_meta_box_data($post_id) {
                                             unset($field[$key][$group_index][$rule_index]);
                                             continue;
                                         }
-                                        $rule_type = isset($rule['type']) ? sanitize_key((string) $rule['type']) : '';
-                                        if(!in_array($rule_type, $valid_types, true)){
+
+                                        /*
+                                         * A type that is not registered right now (PRO or an addon
+                                         * inactive) is kept as long as it is a clean machine name,
+                                         * so a plain Save does not delete the rule. Like field keys,
+                                         * it is validated rather than rewritten into another type.
+                                         */
+                                        $rule_type = isset($rule['type']) && is_scalar($rule['type']) ? (string) $rule['type'] : '';
+                                        if(!\ElzoForms\Utilities\Conditional_Logic::is_storable_condition_type($rule_type, 'field')){
                                             unset($field[$key][$group_index][$rule_index]);
                                             continue;
                                         }
@@ -1260,6 +1285,10 @@ function elzo_forms_save_meta_box_data($post_id) {
 
                     // Apply filters to the field before saving
                     $field = apply_filters('elzo_forms_field_before_save', $field);
+
+                    // Whatever a filter returns, stored fields keep a single
+                    // composite "type" and never a separate "subtype".
+                    $field = \ElzoForms\Field\Field_Type::normalize_field(is_array($field) ? $field : []);
 
                     // Populate the step fields array
                     $sanitized_step['fields'][] = $field;

@@ -38,7 +38,13 @@ class Field_Select extends Field {
      * @return array|null
      */
     public function get_logic_operators(): ?array {
-        return $this->get_string_logic_operators();
+        $operators = $this->get_string_logic_operators();
+
+        // A single select submits one value at most, so counting it would only
+        // ever restate whether something is selected.
+        return empty($this->get('multiple'))
+            ? $operators
+            : array_merge($operators, \ElzoForms\Utilities\Conditional_Logic::get_count_operators());
     }
 
     /**

@@ -10,21 +10,22 @@ defined('ABSPATH') || exit;
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- This file is included from ElzoForms::register_post_types() method, so variables here are function-scoped, not globals.
 
 // Post type: Form
+// Labels for viewing and attaching media are omitted: forms are not publicly
+// viewable and have no media modal. 'new_item' is omitted too. 'add_new' stays:
+// WordPress 6.5 and 6.6 still label the Add New submenu and button with it,
+// and its default there is "Add New Post". From 6.7 the admin reads
+// 'add_new_item' instead.
 
 $form_labels = array(
     'name' => __('Forms', 'elzo-forms'),
     'singular_name' => __('Form', 'elzo-forms'),
-    'add_new' => __('Add New', 'elzo-forms'),
+    'add_new' => __('Add New Form', 'elzo-forms'),
     'add_new_item' => __('Add New Form', 'elzo-forms'),
     'edit_item' => __('Edit Form', 'elzo-forms'),
-    'new_item' => __('New Form', 'elzo-forms'),
-    'view_item' => __('View Form', 'elzo-forms'),
     'search_items' => __('Search Forms', 'elzo-forms'),
     'not_found' => __('No Forms found', 'elzo-forms'),
     'not_found_in_trash' => __('No Forms found in trash', 'elzo-forms'),
     'all_items' => __('All Forms', 'elzo-forms'),
-    'insert_into_item' => __('Insert into Form', 'elzo-forms'),
-    'uploaded_to_this_item' => __('Uploaded to this Form', 'elzo-forms'),
     'filter_items_list' => __('Filter Forms list', 'elzo-forms'),
     'items_list_navigation' => __('Forms list navigation', 'elzo-forms'),
     'items_list' => __('Forms list', 'elzo-forms'),
@@ -54,21 +55,17 @@ $form_args = array(
 register_post_type('elzo_form', $form_args);
 
 // Post type: Submission
+// Labels for creating, viewing and attaching media are omitted: submissions
+// cannot be created by hand, are not publicly viewable and have no media modal.
 
 $submission_labels = array(
     'name' => __('Submissions', 'elzo-forms'),
     'singular_name' => __('Submission', 'elzo-forms'),
-    'add_new' => __('Add New', 'elzo-forms'),
-    'add_new_item' => __('Add New Submission', 'elzo-forms'),
     'edit_item' => __('Edit Submission', 'elzo-forms'),
-    'new_item' => __('New Submission', 'elzo-forms'),
-    'view_item' => __('View Submission', 'elzo-forms'),
     'search_items' => __('Search Submissions', 'elzo-forms'),
     'not_found' => __('No Submissions found', 'elzo-forms'),
     'not_found_in_trash' => __('No Submissions found in trash', 'elzo-forms'),
     'all_items' => __('Submissions', 'elzo-forms'),
-    'insert_into_item' => __('Insert into Submission', 'elzo-forms'),
-    'uploaded_to_this_item' => __('Uploaded to this Submission', 'elzo-forms'),
     'filter_items_list' => __('Filter Submissions list', 'elzo-forms'),
     'items_list_navigation' => __('Submissions list navigation', 'elzo-forms'),
     'items_list' => __('Submissions list', 'elzo-forms'),
@@ -88,6 +85,13 @@ $submission_args = array(
     'menu_icon' => 'dashicons-feedback',
     'show_in_admin_bar' => true,
     'capability_type' => 'post',
+    // Submissions are created by the form handler, never by hand in wp-admin.
+    'capabilities' => array(
+        'create_posts' => 'do_not_allow',
+    ),
+    // Passing 'capabilities' cancels the implicit meta cap mapping WordPress
+    // applies to the 'post' capability type, so it has to be set explicitly.
+    'map_meta_cap' => true,
     'supports' => array(
         'title',
         'revisions',

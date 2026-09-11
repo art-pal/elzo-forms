@@ -461,6 +461,73 @@ function ElzoFormsUnescapeHTML(escapedHTML) {
 // Find a select option by value without building a CSS selector from it.
 // Option values come from the form author, so a quote inside one both breaks
 // the selector and throws before the field can update.
+/**
+ * Ask conditional logic to rebuild itself.
+ *
+ * The upload list creates and removes the inputs that hold a file field's
+ * value, so logic cannot reach them through the change event it listens to:
+ * the elements it registered at load time are not the ones that exist now.
+ */
+function ElzoFormsRefreshConditionalLogic() {
+    document.dispatchEvent(new CustomEvent('elzo-forms-refresh-logic-elements'));
+}
+
+/**
+ * Uploads owned by an item of an upload list, keyed by the item.
+ *
+ * Removing an item discards its temporary file on the server right away
+ * instead of leaving it to the scheduled cleanup.
+ */
+const ElzoFormsFileUploads = new WeakMap();
+
+// The upload ID is what the server accepts chunks and removals on, so it must
+// not be guessable. randomUUID() needs a secure context; getRandomValues() does not.
+function ElzoFormsCreateUploadId() {
+    const cryptoApi = window.crypto;
+
+    if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+        return cryptoApi.randomUUID();
+    }
+
+    if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+        return Array.from(cryptoApi.getRandomValues(new Uint8Array(16)), function(byte) {
+            return byte.toString(16).padStart(2, '0');
+        }).join('');
+    }
+
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+}
+
+function ElzoFormsDiscardUpload(item) {
+    const upload = item ? ElzoFormsFileUploads.get(item) : null;
+
+    if (!upload) {
+        return;
+    }
+
+    ElzoFormsFileUploads.delete(item);
+    upload.cancelled = true;
+
+    // Let the chunk already in flight land first, so the session it creates
+    // exists, and a final chunk has handed back the token removal requires.
+    Promise.resolve(upload.pending).then(function() {
+        const body = new FormData();
+
+        body.set('action', 'elzo_forms_remove_upload');
+        body.set('nonce', window.ElzoFormsAjax ? window.ElzoFormsAjax.uploadNonce : '');
+        body.set('form_id', upload.formId);
+        body.set('field_id', upload.fieldId);
+        body.set('upload_id', upload.uploadId);
+        body.set('file_url', upload.fileUrl);
+
+        // Best effort: whatever this misses, the scheduled cleanup still removes.
+        return fetch(upload.url, {
+            method: 'POST',
+            body: body
+        });
+    }).catch(function() {});
+}
+
 function ElzoFormsFindOptionByValue(select, value) {
     return Array.from(select.options).find(function(option) {
         return option.value === value;
@@ -737,6 +804,61 @@ document.addEventListener('DOMContentLoaded', function() {
         return true;
     }
 
+    /**
+     * Restore a form to the state it was rendered in.
+     *
+     * The native reset is what defines "cleared" for every control: it puts
+     * back the value the field was rendered with instead of blanking it, which
+     * is what a hidden or prefilled field needs, and it keeps working for
+     * field types added later without listing them here. What it cannot reach
+     * is the markup the plugin renders on top of a control, so the widgets
+     * that mirror one are resynced from it afterwards.
+     */
+    function ElzoFormsResetForm(form) {
+        if (!form || typeof form.reset !== 'function') {
+            return;
+        }
+
+        form.reset();
+
+        // An uploaded file is tracked by list markup the plugin builds, not by
+        // the file input, so the reset above leaves it standing. Its hidden
+        // inputs still hold upload URLs whose sessions the submission consumed.
+        form.querySelectorAll('.elzo-forms-file-drop-area').forEach(function(dropArea) {
+            dropArea
+                .querySelectorAll('.elzo-forms-file-drop-area-upload-list .elzo-forms-file-drop-area-upload-list-item')
+                .forEach(function(item) {
+                    item.remove();
+                });
+
+            ElzoFormsUpdateDropArea(dropArea);
+        });
+
+        ElzoFormsRefreshConditionalLogic();
+
+        form.querySelectorAll('.invalid').forEach(function(element) {
+            element.classList.remove('invalid');
+        });
+
+        // Custom select facades, range sliders and conditional logic all
+        // rebuild themselves from a change event, which a native reset never
+        // fires. File inputs are left out: they drive the upload pipeline.
+        form.querySelectorAll('input:not([type="file"]), select, textarea').forEach(function(control) {
+            control.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        // A dropdown search box filters its items on input, so the reset value
+        // only takes effect once the same event replays it.
+        form.querySelectorAll('.elzo-forms-custom-dropdown-search-input').forEach(function(searchInput) {
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+
+        const steps = form.querySelectorAll('.elzo-forms-step');
+        if (steps.length > 1) {
+            ElzoFormsChangeStep(form, steps[0], 'reset', null);
+        }
+    }
+
     function elzo_forms_update_range_slider(rangeSlider){
         const minRange = rangeSlider.querySelector('.elzo-forms-range-slider-min');
         const maxRange = rangeSlider.querySelector('.elzo-forms-range-slider-max');
@@ -907,6 +1029,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if(e.target.classList.contains('elzo-forms-waiting-confirmation')){
                 ElzoFormsRemoveConfirmationElements();
 
+                ElzoFormsDiscardUpload(e.target.closest('.elzo-forms-file-drop-area-upload-list-item'));
+
                 ElzoFormsFadeOut(e.target.closest('.elzo-forms-file-drop-area-upload-list-item'));
 
                 // Remove the file after the animation
@@ -916,6 +1040,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     e.target.closest('.elzo-forms-file-drop-area-upload-list-item').remove();
 
                     ElzoFormsUpdateDropArea(dropArea);
+                    ElzoFormsRefreshConditionalLogic();
                 }, 400);
             } else {
                 ElzoFormsTooltip(e.target, 'Are you sure you want to remove this file?');
@@ -1198,19 +1323,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.wp.hooks.doAction('elzoForms.form.success', form, response, data, formData, submitContext);
                     
                     if (settings.clear_form_after_submission == 'yes') {
-                        const requiredInputs = form.querySelectorAll('.elzo-forms-field');
-
-                        requiredInputs.forEach(function(input) {
-                            if (input.tagName === 'SELECT') {
-                                input.selectedIndex = 0;
-                            } else if (input.type === 'checkbox' || input.type === 'radio') {
-                                input.checked = false;
-                            } else {
-                                input.value = '';
-                            }
-                            
-                            input.dispatchEvent(new Event('change', { bubbles: true }));
-                        });
+                        ElzoFormsResetForm(form);
                     }
 
                     if (settings.hide_form_after_submission == 'yes') {
@@ -1446,9 +1559,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const form = dropArea.closest('.elzo-forms-form');
             const maxFileSizeMb = parseFloat(fileInput.dataset.maxFileSize || '0');
             const maxFileSize = Number.isFinite(maxFileSizeMb) && maxFileSizeMb > 0 ? maxFileSizeMb * 1024 * 1024 : 0;
-            const uploadId = window.crypto && typeof window.crypto.randomUUID === 'function'
-                ? window.crypto.randomUUID()
-                : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+            const uploadId = ElzoFormsCreateUploadId();
             const chunksTotal = Math.max(1, Math.ceil(file.size / chunkSize));
             const url = window.ElzoFormsAjax && window.ElzoFormsAjax.ajaxUrl ? window.ElzoFormsAjax.ajaxUrl : '/wp-admin/admin-ajax.php';
             const uploadContext = {
@@ -1528,6 +1639,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const progressBar = template.querySelector('.elzo-forms-file-drop-area-upload-list-item-progress-bar');
             const progressPercentage = template.querySelector('.elzo-forms-file-drop-area-upload-list-item-progress-percentage');
+            const progressTrack = template.querySelector('.elzo-forms-file-drop-area-upload-list-item-progress');
+
+            if (progressTrack) {
+                // Set here as well: a theme's copy of the template may predate these attributes.
+                progressTrack.setAttribute('role', 'progressbar');
+                progressTrack.setAttribute('aria-valuemin', '0');
+                progressTrack.setAttribute('aria-valuemax', '100');
+                progressTrack.setAttribute('aria-valuenow', '0');
+
+                if (ElzoFormsTexts.uploadProgress) {
+                    progressTrack.setAttribute('aria-label', ElzoFormsTexts.uploadProgress.replace('%s', file.name));
+                }
+            }
+
+            function renderProgress(progress, label) {
+                progressBar.style.width = progress + '%';
+                progressPercentage.textContent = label;
+
+                if (progressTrack) {
+                    progressTrack.setAttribute('aria-valuenow', String(Math.floor(progress)));
+                }
+            }
+
             uploadContext.item = template;
             uploadContext.formData = formData;
             uploadContext.progressBar = progressBar;
@@ -1580,6 +1714,17 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.set('chunks_total', chunksTotal);
             uploadContext.formData = formData;
 
+            const upload = {
+                uploadId: uploadId,
+                formId: formData.get('form_id') || '',
+                fieldId: formData.get('field_id') || '',
+                url: url,
+                fileUrl: '',
+                pending: null,
+                cancelled: false
+            };
+            ElzoFormsFileUploads.set(template, upload);
+
             window.wp.hooks.doAction('elzoForms.file.upload.before', file, dropArea, uploadContext);
 
             let start = 0;
@@ -1596,10 +1741,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.set('chunk_index', chunkIndex);
                 formData.set('chunks_total', chunksTotal);
 
-                fetch(url, {
+                upload.pending = fetch(url, {
                     method: 'POST',
                     body: formData
                 }).then(response => response.json()).then(answer => {
+                    if (answer && answer.success && answer.data && answer.data.file_url) {
+                        upload.fileUrl = answer.data.file_url;
+                    }
+
+                    // The visitor removed the file; ElzoFormsDiscardUpload() takes it from here.
+                    if (upload.cancelled) {
+                        return;
+                    }
+
                     uploadContext.response = answer;
 
                     if (answer.success) {
@@ -1610,20 +1764,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         uploadContext.loaded = Math.min(start, file.size);
                         uploadContext.progress = Math.min(percentage, 100);
                         uploadContext.chunkIndex = chunkIndex;
-                        progressBar.style.width = uploadContext.progress + '%';
-                        progressPercentage.textContent = uploadContext.progress.toFixed(2) + '%';
+                        renderProgress(uploadContext.progress, uploadContext.progress.toFixed(2) + '%');
 
                         window.wp.hooks.doAction('elzoForms.file.upload.progress', file, dropArea, uploadContext.progress, uploadContext);
 
                         if (start < file.size) {
                             uploadChunk();
                         } else {
-                            progressBar.style.width = '100%';
-                            progressPercentage.textContent = '100%';
+                            renderProgress(100, '100%');
 
                             templateInput.value = answer.data.file_url;
                             uploadContext.fileUrl = answer.data.file_url;
                             uploadContext.progress = 100;
+
+                            ElzoFormsRefreshConditionalLogic();
 
                             window.wp.hooks.doAction('elzoForms.file.upload.success', file, dropArea, answer, uploadContext);
                         }
@@ -1650,6 +1804,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         ElzoFormsUpdateDropArea(dropArea);
                     }
                 }).catch(error => {
+                    if (upload.cancelled) {
+                        return;
+                    }
+
                     console.error('Error:', error);
                     uploadContext.error = error;
 
@@ -1669,6 +1827,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }
 
+                    // The request failed in transit, so the server may still hold a partial file.
+                    ElzoFormsDiscardUpload(template);
                     template.remove();
                     ElzoFormsUpdateDropArea(dropArea);
                 });
@@ -1682,33 +1842,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 document.addEventListener('DOMContentLoaded', function() {
     const LOGIC_CONTEXT = window.ElzoFormsAjax?.logicContext || {};
-    const SERVER_NOW_UTC_SECONDS = Number(LOGIC_CONTEXT.serverNowUtc || 0);
-    const SERVER_NOW_UTC_MS = Number.isFinite(SERVER_NOW_UTC_SECONDS) && SERVER_NOW_UTC_SECONDS > 0
-        ? SERVER_NOW_UTC_SECONDS * 1000
-        : null;
-    const CLIENT_BOOT_MONOTONIC_MS = typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : null;
-    const CLIENT_BOOT_WALLCLOCK_MS = Date.now();
-
+    // Mirrors Conditional_Logic::get_supported_operators(). The fallback is
+    // what runs when the localized list is missing, so it has to carry every
+    // operator PHP knows or a condition silently evaluates to false here while
+    // PHP still honours it.
     const SUPPORTED_LOGIC_OPERATORS = Array.isArray(window.ElzoFormsAjax?.logicOperators)
         ? window.ElzoFormsAjax.logicOperators
-        : ['==', '!=', '>', '<', 'like', 'not_like', 'starts_with', 'ends_with', 'pattern'];
-
-    function getCurrentUtcMs() {
-        if (SERVER_NOW_UTC_MS === null) {
-            return Date.now();
-        }
-
-        // Use monotonic elapsed time when available to avoid jumps if the user
-        // changes their system clock while the page is open.
-        const elapsedMs = CLIENT_BOOT_MONOTONIC_MS !== null && typeof performance !== 'undefined' && typeof performance.now === 'function'
-            ? (performance.now() - CLIENT_BOOT_MONOTONIC_MS)
-            : (Date.now() - CLIENT_BOOT_WALLCLOCK_MS);
-
-        return SERVER_NOW_UTC_MS + elapsedMs;
-    }
-
+        : ['==', '!=', '>', '<', 'like', 'not_like', 'starts_with', 'ends_with', 'pattern',
+           'count_eq', 'count_gt', 'count_lt'];
     /*
      * PHP compiles every user pattern as /…/u (Conditional_Logic::matches_pattern_for_all_values),
      * so the client asks for the same Unicode semantics. A few patterns PCRE reads as literals —
@@ -1758,14 +1899,44 @@ document.addEventListener('DOMContentLoaded', function() {
                 const regex = compileLogicPattern(expected);
                 return regex !== null && values.every(value => regex.test(value));
             }
+            case 'count_eq':
+                return countSubmittedValues(values) === toLogicInt(expected);
+            case 'count_gt':
+                return countSubmittedValues(values) > toLogicInt(expected);
+            case 'count_lt':
+                return countSubmittedValues(values) < toLogicInt(expected);
             default:
                 return false;
         }
     }
 
+    /**
+     * Count the values a field actually submitted.
+     *
+     * Mirrors Conditional_Logic::count_submitted_values(): an empty field
+     * still contributes one empty string so the value operators have
+     * something to compare, and counting that would report one value for a
+     * field that submitted none.
+     */
+    function countSubmittedValues(values) {
+        return values.filter(value => String(value ?? '') !== '').length;
+    }
+
     // -------------------------------------------------------------------------
     // Condition item evaluators
     // -------------------------------------------------------------------------
+
+    /**
+     * Controls that carry a field's submitted value.
+     *
+     * A file field has no .elzo-forms-field control of its own: its value
+     * lives in the hidden inputs of the upload list, one per uploaded file,
+     * which is exactly what the browser posts and what PHP compares against.
+     * The list scope matters -- the item template sits outside it and would
+     * otherwise contribute a permanent empty value.
+     */
+    const LOGIC_VALUE_SELECTOR = '.elzo-forms-field, '
+        + '.elzo-forms-file-drop-area-upload-list .elzo-forms-file-drop-area-upload-list-item-input';
 
     function isComparableInputElement(element) {
         if (!element || !element.tagName) return false;
@@ -1783,6 +1954,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const type = (element.type || '').toLowerCase();
             if (['checkbox', 'radio'].includes(type)) {
                 if (element.checked) values.push(element.value);
+            } else if (element.tagName === 'SELECT' && element.multiple) {
+                // select.value is only the first selected option, so a
+                // multi-select would otherwise hide every choice after the
+                // first from a comparison PHP makes against all of them.
+                Array.from(element.selectedOptions).forEach(function(option) {
+                    if (!option.hasAttribute('data-placeholder')) values.push(option.value);
+                });
             } else {
                 values.push(element.value);
             }
@@ -1809,7 +1987,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function findFieldWrapper(root, fieldId) {
-        return findInRoot(root, '[data-ef-field-id="' + escapeAttributeValue(fieldId) + '"]');
+        // Field rules are always local to their owning form. A document-level
+        // fallback could bind a stale rule to the same logical field in another
+        // instance of the form.
+        return root.querySelector('[data-ef-field-id="' + escapeAttributeValue(fieldId) + '"]');
     }
 
     function evaluateFieldCondition(operator, settings, collectFields, root = document) {
@@ -1818,7 +1999,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const fieldWrapper = findFieldWrapper(root, fieldId);
         const fields = fieldWrapper
-            ? Array.from(fieldWrapper.querySelectorAll('.elzo-forms-field'))
+            ? Array.from(fieldWrapper.querySelectorAll(LOGIC_VALUE_SELECTOR))
             : [];
 
         const values = collectComparableInputValues(fields, collectFields);
@@ -1891,86 +2072,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const parsed = parseInt(String(value ?? '').trim(), 10);
         return Number.isNaN(parsed) ? 0 : parsed;
     }
-
-    function evaluateUserCondition(operator, settings) {
-        const ctx = LOGIC_CONTEXT;
-        if (!ctx) return false;
-
-        const roles  = Array.isArray(ctx.userRoles) ? ctx.userRoles : [];
-        const userId = Number(ctx.userId) || 0;
-
-        /*
-         * Guests fail every user condition, matching the early return in PHP
-         * Conditional_Logic::evaluate_user_item(). Without this, the negative
-         * operators (role_not_equals, role_not_in, id_not_equals, id_not_in)
-         * would pass here against empty roles / id 0 but fail server side, so a
-         * logged-out visitor would see a field whose value is later discarded.
-         */
-        if (userId <= 0) return false;
-
-        /*
-         * PHP builds the list with array_filter(), which drops both '' and '0',
-         * and the equality operators read only its first entry — so a rule
-         * written as "editor, author" matches on "editor" there and must not be
-         * compared as a whole string here.
-         */
-        const list = String(settings.value ?? '')
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s !== '' && s !== '0');
-        const first = list.length ? list[0] : null;
-        const ids   = list.map(toLogicInt);
-
-        switch (operator) {
-            case 'role_equals':     return first !== null && roles.includes(first);
-            case 'role_not_equals': return first !== null && !roles.includes(first);
-            case 'role_in':         return list.some(r => roles.includes(r));
-            case 'role_not_in':     return !list.some(r => roles.includes(r));
-            case 'id_equals':       return first !== null && userId === toLogicInt(first);
-            case 'id_not_equals':   return first !== null && userId !== toLogicInt(first);
-            case 'id_in':           return ids.includes(userId);
-            case 'id_not_in':       return !ids.includes(userId);
-            default:                return false;
-        }
-    }
-
-    function parseCookies() {
-        const cookies = {};
-        document.cookie.split(';').forEach(function(part) {
-            const idx = part.indexOf('=');
-            if (idx < 0) return;
-            const k = decodeURIComponent(part.slice(0, idx).trim());
-            const v = decodeURIComponent(part.slice(idx + 1).trim());
-            cookies[k] = v;
-        });
-        return cookies;
-    }
-
-    function evaluateCookieCondition(operator, settings) {
-        const name     = String(settings.name  ?? '').trim();
-        const expected = String(settings.value ?? '');
-        if (!name) return false;
-
-        const cookies = parseCookies();
-        const exists  = Object.prototype.hasOwnProperty.call(cookies, name);
-        const actual  = exists ? cookies[name] : '';
-
-        switch (operator) {
-            case 'exists':      return exists;
-            case 'not_exists':  return !exists;
-            case 'equals':      return exists && actual === expected;
-            case 'not_equals':  return exists && actual !== expected;
-            case 'contains':    return exists && expected !== '' && actual.includes(expected);
-            case 'not_contains':return exists && !actual.includes(expected);
-            case 'pattern': {
-                if (!exists || !expected) return false;
-                const regex = compileLogicPattern(expected);
-                return regex !== null && regex.test(actual);
-            }
-            default:            return false;
-        }
-    }
-
     function sanitizeLogicKey(value) {
         return String(value ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
     }
@@ -1991,6 +2092,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return pageIds;
     }
 
+    function collectConditionPostTypes(settings) {
+        const rawPostTypes = settings?.post_types ?? settings?.post_type ?? settings?.value ?? [];
+        const values = Array.isArray(rawPostTypes)
+            ? rawPostTypes
+            : String(rawPostTypes).split(/[,\s]+/);
+
+        return [...new Set(values.map(sanitizeLogicKey).filter(Boolean))];
+    }
+
     function evaluatePageCondition(operator, settings) {
         // The admin screens reuse this file without a page context; without it the
         // condition stays closed, matching PHP Conditional_Logic::evaluate_page_item().
@@ -2000,7 +2110,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const currentPostType = sanitizeLogicKey(LOGIC_CONTEXT.currentPostType);
 
         const pageIds = collectConditionPageIds(settings);
-        const postType = sanitizeLogicKey(settings?.post_type) || sanitizeLogicKey(settings?.value);
+        const postTypes = collectConditionPostTypes(settings);
+        const postType = postTypes[0] || '';
 
         switch (operator) {
             case 'page_id_equals':       return !!pageIds[0] && currentPageId === pageIds[0];
@@ -2009,103 +2120,18 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'page_id_not_in':       return !pageIds.includes(currentPageId);
             case 'post_type_equals':     return postType !== '' && currentPostType === postType;
             case 'post_type_not_equals': return postType !== '' && currentPostType !== postType;
+            case 'post_type_in':         return postTypes.length > 0 && postTypes.includes(currentPostType);
+            case 'post_type_not_in':     return postTypes.length > 0 && !postTypes.includes(currentPostType);
             default:                     return false;
         }
     }
-
-    function evaluateUrlCondition(operator, settings) {
-        const expected = String(settings?.value ?? '');
-        const actual   = typeof window.location !== 'undefined' ? String(window.location.href) : '';
-
-        switch (operator) {
-            case 'not_equals':   return actual !== expected;
-            case 'contains':     return expected !== '' && actual.toLowerCase().includes(expected.toLowerCase());
-            case 'not_contains': return expected !== '' && !actual.toLowerCase().includes(expected.toLowerCase());
-            case 'starts_with':  return expected !== '' && actual.startsWith(expected);
-            case 'ends_with':    return expected !== '' && actual.endsWith(expected);
-            case 'pattern': {
-                if (!expected) return false;
-                const regex = compileLogicPattern(expected);
-                return regex !== null && regex.test(actual);
-            }
-            case 'equals':
-            default:             return actual === expected;
-        }
-    }
-
-    function parseDateTimeValueToUtcMs(value) {
-        const raw = String(value ?? '').trim();
-        if (!raw) return null;
-
-        if (/[zZ]|[+\-]\d{2}:?\d{2}$/.test(raw)) {
-            const parsed = Date.parse(raw);
-            return Number.isNaN(parsed) ? null : parsed;
-        }
-
-        const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
-        if (match) {
-            const year = Number(match[1]);
-            const month = Number(match[2]);
-            const day = Number(match[3]);
-            const hour = Number(match[4]);
-            const minute = Number(match[5]);
-            const second = Number(match[6] || 0);
-            return Date.UTC(year, month - 1, day, hour, minute, second);
-        }
-
-        const fallback = Date.parse(raw + 'Z');
-        return Number.isNaN(fallback) ? null : fallback;
-    }
-
-    function getDateTimeSettingUtcMs(settings, key) {
-        const timestampKey = key + '_timestamp';
-        const rawTimestamp = Number(settings?.[timestampKey]);
-        if (Number.isFinite(rawTimestamp) && rawTimestamp > 0) {
-            return rawTimestamp > 1e12 ? rawTimestamp : rawTimestamp * 1000;
-        }
-
-        return parseDateTimeValueToUtcMs(settings?.[key]);
-    }
-
-    function evaluateDateTimeCondition(operator, settings) {
-        const nowUtcMs = getCurrentUtcMs();
-        const startUtcMs = getDateTimeSettingUtcMs(settings, 'start_time')
-            ?? parseDateTimeValueToUtcMs(settings?.value);
-
-        switch (operator) {
-            case 'before':
-                return startUtcMs !== null && nowUtcMs < startUtcMs;
-            case 'after':
-                return startUtcMs !== null && nowUtcMs > startUtcMs;
-            default:
-                return false;
-        }
-    }
-
-    function evaluateDefaultCondition(type, operator, settings, collectFields, root) {
-        switch (type) {
-            case 'field':
-                return evaluateFieldCondition(operator, settings, collectFields, root);
-            case 'input':
-                return evaluateInputCondition(operator, settings, collectFields, root);
-            case 'auth':
-                return evaluateAuthCondition(operator);
-            case 'user':
-                return evaluateUserCondition(operator, settings);
-            case 'cookie':
-                return evaluateCookieCondition(operator, settings);
-            case 'page':
-                return evaluatePageCondition(operator, settings);
-            case 'url':
-                return evaluateUrlCondition(operator, settings);
-            default:
-                return false;
-        }
-    }
-
     /**
      * Evaluate a single condition item {type, operator, settings} — matches PHP
      * Conditional_Logic::evaluate_condition_item().
+     *
+     * A type this build does not ship fails closed, as it does in PHP: the FREE
+     * build drops the PRO evaluators, so a saved PRO rule can never show a field
+     * here whose value the server would then discard.
      */
     function evaluateConditionItem(item, collectFields, root) {
         const type     = item.type     || 'field';
@@ -2113,10 +2139,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const settings = item.settings || {};
 
         switch (type) {
-            case 'date_time':
-                return evaluateDateTimeCondition(operator, settings);
+            case 'field':
+                return evaluateFieldCondition(operator, settings, collectFields, root);
+            case 'input':
+                return evaluateInputCondition(operator, settings, collectFields, root);
+            case 'auth':
+                return evaluateAuthCondition(operator);
+            case 'page':
+                return evaluatePageCondition(operator, settings);
             default:
-                return evaluateDefaultCondition(type, operator, settings, collectFields, root);
+                return false;
         }
     }
 

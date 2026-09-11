@@ -41,9 +41,8 @@ if (!$form_post || $form_post->post_type !== 'elzo_form') {
     ]);
 }
 
-// Public submissions are accepted only for published forms. Authorized users
-// may still submit non-public forms while previewing them.
-if ($form_post->post_status !== 'publish' && !current_user_can('edit_post', $form_id)) {
+// Apply the same interaction policy used by rendering, editor previews, and uploads.
+if (!$form->can_interact()) {
     wp_send_json_error([
         'message' => __('Form not found', 'elzo-forms'),
     ], 403);
@@ -333,6 +332,10 @@ foreach($validated_submission_fields as $validated_submission_field){
     $field = $validated_submission_field['field'];
     $submission_field_value = $field->finalize_submission_value($validated_submission_field['value']);
     if(is_wp_error($submission_field_value)){
+        // Fields finalize one by one, so a failure here leaves the files of the
+        // fields before it in permanent storage with no submission to own them.
+        \ElzoForms\Upload\Submission_File_Cleanup::discard_files($submission_object_fields);
+
         wp_send_json_error([
             'message' => wp_kses_post($submission_field_value->get_error_message()),
         ]);
@@ -353,9 +356,13 @@ unset($validated_submission_fields, $sanitized_submission_steps);
 $submission->set_fields($submission_object_fields);
 
 // Break if submission data is empty
-if(!$submission->get_fields()) wp_send_json_error([
-    'message' => __('Submission data is missing or invalid', 'elzo-forms'),
-]);
+if(!$submission->get_fields()){
+    \ElzoForms\Upload\Submission_File_Cleanup::discard_files($submission_object_fields);
+
+    wp_send_json_error([
+        'message' => __('Submission data is missing or invalid', 'elzo-forms'),
+    ]);
+}
 
 // Mark as spam if needed (before saving)
 if($spam){
@@ -367,6 +374,10 @@ $submission_post_id = $submission->save();
 
 // Check for errors
 if(is_wp_error($submission_post_id)){
+    // The files moved into permanent storage above are owned by a submission
+    // that was never stored, so nothing will ever reference them again.
+    \ElzoForms\Upload\Submission_File_Cleanup::discard_files($submission_object_fields);
+
     wp_send_json_error([
         'message' => wp_kses_post($submission_post_id->get_error_message()),
     ]);

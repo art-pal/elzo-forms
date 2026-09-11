@@ -378,6 +378,36 @@ class Form_JSON_Storage {
     }
 
     /**
+     * Store the field types of an imported payload in the composite format.
+     *
+     * JSON written before composite types ("type": "text", "subtype":
+     * "email") keeps reading correctly, but the database copy is always
+     * written as "text:email". The source file itself is never rewritten.
+     *
+     * @param array $payload Form payload.
+     * @return array
+     */
+    protected static function normalize_payload_field_types(array $payload): array {
+        if (empty($payload['steps']) || !is_array($payload['steps'])) {
+            return $payload;
+        }
+
+        foreach ($payload['steps'] as $step_index => $step) {
+            if (!is_array($step) || empty($step['fields']) || !is_array($step['fields'])) {
+                continue;
+            }
+
+            foreach ($step['fields'] as $field_index => $field) {
+                if (is_array($field) && (isset($field['type']) || isset($field['subtype']))) {
+                    $payload['steps'][$step_index]['fields'][$field_index] = \ElzoForms\Field\Field_Type::normalize_field($field);
+                }
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
      * Import a JSON file and create/update form in database.
      *
      * Reads JSON file, validates data, and creates new form or updates existing.
@@ -436,6 +466,8 @@ class Form_JSON_Storage {
         unset($import_payload['automations']);
         unset($import_payload['disable_global_automations']);
         unset($import_payload['disabled_global_automation_ids']);
+
+        $import_payload = self::normalize_payload_field_types($import_payload);
 
         self::$importing = true;
 

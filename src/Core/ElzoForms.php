@@ -69,10 +69,12 @@ class ElzoForms {
         add_action('wp_ajax_elzo_forms_submit', [$this, 'handle_form_submission']);
         add_action('wp_ajax_nopriv_elzo_forms_submit', [$this, 'handle_form_submission']);
         add_shortcode('elzo_form', [$this, 'render_form_shortcode']);
+        \ElzoForms\Blocks\Form_Block::init();
 
         // Register AJAX handlers.
         \ElzoForms\Admin\Ajax_Handler::init();
         \ElzoForms\Upload\File_Upload_Handler::init();
+        \ElzoForms\Upload\Submission_File_Cleanup::init();
 
         // Initialize JSON storage.
         add_action('init', [\ElzoForms\Form\Form_JSON_Storage::class, 'init'], 10);
@@ -174,10 +176,7 @@ class ElzoForms {
             'text_align' => '',
         ], $atts, 'elzo_form');
 
-        $form_id = intval($atts['id']);
-        $form = new \ElzoForms\Form\Form($form_id);
-
-        return $form->render($atts);
+        return \ElzoForms\Form\Form::render_by_id($atts);
     }
 
     /**

@@ -22,6 +22,8 @@ class File_Upload_Handler {
     private const CLEANUP_HOOK = 'elzo_forms_cleanup_unattached_uploads';
     private const SESSION_MARKER_FILE = '.elzo-upload-session.json';
     private const SESSION_LOCK_FILE = '.elzo-upload-sessions.lock';
+    private const SESSION_CHUNK_LOCK_FILE = '.elzo-upload-chunks.lock';
+    private const UPLOAD_ID_PATTERN = '/^[a-z0-9][a-z0-9_-]{10,80}$/';
     private const SESSION_LIFETIME = 21600;
     private const SESSION_IDLE_LIFETIME = 900;
     private const MAX_CHUNKS_TOTAL = 1000;
@@ -50,6 +52,8 @@ class File_Upload_Handler {
     public static function init(): void {
         add_action('wp_ajax_elzo_forms_upload_file', [__CLASS__, 'handle_upload']);
         add_action('wp_ajax_nopriv_elzo_forms_upload_file', [__CLASS__, 'handle_upload']);
+        add_action('wp_ajax_elzo_forms_remove_upload', [__CLASS__, 'handle_remove_upload']);
+        add_action('wp_ajax_nopriv_elzo_forms_remove_upload', [__CLASS__, 'handle_remove_upload']);
         add_action(self::CLEANUP_HOOK, [__CLASS__, 'cleanup_expired_uploads']);
         self::schedule_cleanup();
     }
@@ -148,7 +152,7 @@ class File_Upload_Handler {
             ? sanitize_text_field(wp_unslash((string) $_POST['file_name']))
             : '';
 
-        if (empty($upload_id) || !preg_match('/^[a-z0-9][a-z0-9_-]{10,80}$/', $upload_id)) {
+        if (empty($upload_id) || !preg_match(self::UPLOAD_ID_PATTERN, $upload_id)) {
             wp_send_json_error([
                 'message' => esc_html__('Upload session is invalid', 'elzo-forms'),
             ]);
@@ -224,52 +228,17 @@ class File_Upload_Handler {
             ]);
         }
 
-        $upload_path = (string) $session['path'];
+        $stored = self::store_upload_chunk($upload_id, $session, $chunk_index, $tmp_name, $max_file_size_bytes, $allowed_types);
+        if (!empty($stored['error']) || empty($stored['session'])) {
+            wp_send_json_error([
+                'message' => $stored['error'] ?? esc_html__('Upload session is invalid', 'elzo-forms'),
+            ]);
+        }
+
+        $session = $stored['session'];
         $file_name = (string) $session['file_name'];
-
-        $existing_size = $chunk_index > 0 && file_exists($upload_path) ? (int) filesize($upload_path) : 0;
-        $chunk_size = (int) filesize($tmp_name);
-        if ($chunk_size < 0 || $existing_size + $chunk_size > $max_file_size_bytes) {
-            self::delete_upload_session($upload_id);
-            wp_send_json_error([
-                'message' => self::get_file_size_error_message($existing_size + max(0, $chunk_size), $max_file_size_bytes),
-            ]);
-        }
-
-        // Handle chunk upload
-        try {
-            self::process_chunk($upload_path, $chunk_index, $tmp_name);
-        } catch (\Exception $e) {
-            wp_send_json_error([
-                'message' => esc_html($e->getMessage()),
-            ]);
-        }
-
-        // Re-check the assembled file in case its size changed between the preflight check and write.
-        $current_size = (int) filesize($upload_path);
-        if ($current_size > $max_file_size_bytes) {
-            self::delete_upload_session($upload_id);
-            wp_send_json_error([
-                'message' => self::get_file_size_error_message($current_size, $max_file_size_bytes),
-            ]);
-        }
-
-        $is_final_chunk = $chunk_index === ($chunks_total - 1);
-        if ($is_final_chunk) {
-            $validation_error = self::validate_file_type($upload_path, $allowed_types);
-            if ($validation_error) {
-                wp_delete_file($upload_path);
-                self::delete_upload_session($upload_id);
-                wp_send_json_error([
-                    'message' => $validation_error,
-                ]);
-            }
-
-            $session = self::finalize_upload_session($upload_id, $session);
-        }
-
-        $file_url = self::path_to_upload_url($upload_path, $upload_dir);
-        if ($is_final_chunk && !empty($session['token'])) {
+        $file_url = self::path_to_upload_url((string) $session['path'], $upload_dir);
+        if (!empty($session['finalized'])) {
             $file_url = self::add_upload_token_to_url($file_url, $upload_id, (string) $session['token']);
         }
 
@@ -280,6 +249,56 @@ class File_Upload_Handler {
             'file_original_name' => $original_file_name,
             'file_name' => $file_name,
             'file_url' => $file_url,
+        ]);
+    }
+
+    /**
+     * Handle a visitor removing a temporary upload from a file field.
+     *
+     * The file is discarded right away instead of holding the visitor's upload
+     * quota and disk space until the scheduled cleanup. An upload still in
+     * progress is identified by its upload ID alone, because that ID is what
+     * every chunk of it is accepted on; a finalized one must also present its
+     * tokenized URL, the same proof a form submission needs to claim it.
+     */
+    public static function handle_remove_upload(): void {
+        check_ajax_referer('elzo_forms_upload_file', 'nonce');
+
+        $form_id = isset($_POST['form_id']) && is_scalar($_POST['form_id'])
+            ? intval(wp_unslash((string) $_POST['form_id']))
+            : 0;
+        $field_id = isset($_POST['field_id']) && is_scalar($_POST['field_id'])
+            ? self::normalize_field_id(sanitize_text_field(wp_unslash((string) $_POST['field_id'])))
+            : '';
+        $upload_id = isset($_POST['upload_id']) && is_scalar($_POST['upload_id'])
+            ? sanitize_key(wp_unslash((string) $_POST['upload_id']))
+            : '';
+        $file_url = isset($_POST['file_url']) && is_scalar($_POST['file_url'])
+            ? esc_url_raw(wp_unslash((string) $_POST['file_url']))
+            : '';
+
+        if (empty($form_id) || $field_id === '' || !preg_match(self::UPLOAD_ID_PATTERN, $upload_id)) {
+            wp_send_json_error([
+                'message' => esc_html__('Upload session is invalid', 'elzo-forms'),
+            ]);
+        }
+
+        $session = self::get_upload_session($upload_id);
+        if (empty($session['path'])) {
+            // Already submitted, discarded or swept: nothing is left to remove.
+            wp_send_json_success([
+                'removed' => false,
+            ]);
+        }
+
+        if (!self::remove_upload_session($upload_id, (string) $session['path'], $form_id, $field_id, $file_url)) {
+            wp_send_json_error([
+                'message' => esc_html__('Upload session is invalid', 'elzo-forms'),
+            ]);
+        }
+
+        wp_send_json_success([
+            'removed' => true,
         ]);
     }
 
@@ -343,14 +362,10 @@ class File_Upload_Handler {
     }
 
     /**
-     * Public uploads are accepted only for published forms.
+     * Accept uploads for forms the current user can interact with.
      */
     protected static function is_uploadable_form($form): bool {
-        $post = $form->get_post();
-
-        return $post instanceof \WP_Post
-            && $post->post_type === 'elzo_form'
-            && $post->post_status === 'publish';
+        return $form instanceof \ElzoForms\Form\Form && $form->can_interact();
     }
 
     /**
@@ -510,6 +525,119 @@ class File_Upload_Handler {
     }
 
     /**
+     * Delete permanent submission files addressed by their stored URLs.
+     *
+     * A submission owns the files it stored, so deleting the submission must
+     * delete them too. Every URL is resolved back to a path and accepted only
+     * inside the permanent user-uploads root: a stored value is arbitrary text
+     * until that check passes, and the temporary root is excluded because
+     * files there belong to an upload session, not to a submission.
+     *
+     * @param array $file_urls Stored file URLs.
+     * @return int Number of deleted files.
+     */
+    public static function delete_submitted_files(array $file_urls): int {
+        $upload_dir = wp_upload_dir();
+        $user_uploads_dir = self::get_user_uploads_dir($upload_dir);
+        if (!is_dir($user_uploads_dir)) {
+            return 0;
+        }
+
+        $unattached_dir = self::get_unattached_upload_dir($upload_dir);
+        $base_url = rtrim((string) $upload_dir['baseurl'], '/');
+        $deleted = 0;
+
+        foreach ($file_urls as $file_url) {
+            if (!is_string($file_url) || $file_url === '') {
+                continue;
+            }
+
+            $clean_url = self::strip_url_query_and_fragment($file_url);
+            if ($clean_url === '' || strpos($clean_url, $base_url . '/') !== 0) {
+                continue;
+            }
+
+            $relative_path = ltrim(substr($clean_url, strlen($base_url)), '/');
+            $file_path = rtrim((string) $upload_dir['basedir'], '/\\') . '/' . $relative_path;
+
+            if (!is_file($file_path) || is_link($file_path)) {
+                continue;
+            }
+
+            if (!self::path_is_in_directory($file_path, $user_uploads_dir)
+                || self::path_is_in_directory($file_path, $unattached_dir)) {
+                continue;
+            }
+
+            wp_delete_file($file_path);
+
+            if (!file_exists($file_path)) {
+                $deleted++;
+                self::prune_empty_upload_directories(dirname($file_path), $user_uploads_dir);
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Remove the randomized directories a deleted file leaves behind.
+     *
+     * Each finalized upload gets its own randomized directory under the dated
+     * path, so the directory is as much a leftover as the file itself. Every
+     * plugin-owned directory also carries the index.php and .htaccess guards
+     * written by ensure_upload_directory(), so a directory holding nothing but
+     * those is empty in every sense that matters here. The walk stops at the
+     * first directory that still holds a file and never removes the permanent
+     * root itself.
+     */
+    protected static function prune_empty_upload_directories(string $directory, string $user_uploads_dir): void {
+        if (!class_exists('\WP_Filesystem_Base', false)) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-base.php';
+        }
+
+        if (!class_exists('\WP_Filesystem_Direct', false)) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-direct.php';
+        }
+
+        $filesystem = new \WP_Filesystem_Direct(false);
+        $root = self::normalize_path(rtrim($user_uploads_dir, '/\\'));
+
+        while (is_dir($directory) && !is_link($directory)) {
+            $real_directory = realpath($directory);
+            if (!$real_directory) {
+                return;
+            }
+
+            if (self::normalize_path($real_directory) === $root
+                || !self::path_is_in_directory($directory, $user_uploads_dir)) {
+                return;
+            }
+
+            $guards = [];
+            foreach (new \FilesystemIterator($directory, \FilesystemIterator::SKIP_DOTS) as $entry) {
+                if ($entry->isDir() || $entry->isLink()
+                    || !in_array($entry->getFilename(), ['index.php', '.htaccess'], true)) {
+                    return;
+                }
+
+                $guards[] = $entry->getPathname();
+            }
+
+            foreach ($guards as $guard) {
+                wp_delete_file($guard);
+            }
+
+            $parent = dirname($directory);
+            if (!$filesystem->rmdir($directory)) {
+                return;
+            }
+
+            $directory = $parent;
+        }
+    }
+
+    /**
      * Create the protected upload roots used by file fields.
      *
      * This is also called on activation so that existing upload directories no
@@ -589,6 +717,10 @@ class File_Upload_Handler {
 
         for ($attempt = 0; $attempt < 5; $attempt++) {
             $random_name = self::generate_random_storage_component();
+            if ($random_name === '') {
+                return '';
+            }
+
             $candidate = $extension === '' ? $random_name : $random_name . '.' . $extension;
             if ($directory === '' || !file_exists(rtrim($directory, '/\\') . '/' . $candidate)) {
                 return $candidate;
@@ -738,6 +870,10 @@ class File_Upload_Handler {
 
     /**
      * Prepare or load an upload session.
+     *
+     * This only checks that the request belongs to the session. Chunk order and
+     * the activity stamp are handled by store_upload_chunk(), under the lock
+     * that serializes every change to one session.
      */
     protected static function prepare_upload_session(string $upload_id, int $chunk_index, string $custom_upload_dir, string $file_name, int $form_id, string $field_id, int $chunks_total = 1): array {
         if ($chunk_index === 0) {
@@ -762,7 +898,7 @@ class File_Upload_Handler {
             return [];
         }
 
-        return self::touch_upload_session($upload_id, $session);
+        return $session;
     }
 
     /**
@@ -770,14 +906,8 @@ class File_Upload_Handler {
      * session cap cannot be bypassed by concurrent first-chunk requests.
      */
     protected static function create_upload_session(string $upload_id, string $custom_upload_dir, string $file_name, int $form_id, string $field_id, int $chunks_total): array {
-        $lock_path = rtrim($custom_upload_dir, '/\\') . '/' . self::SESSION_LOCK_FILE;
-        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires a native file handle.
-        $lock = fopen($lock_path, 'c');
-        if ($lock === false || !flock($lock, LOCK_EX)) {
-            if (is_resource($lock)) {
-                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the native handle opened solely to acquire the flock() lock.
-                fclose($lock);
-            }
+        $lock = self::acquire_lock(rtrim($custom_upload_dir, '/\\') . '/' . self::SESSION_LOCK_FILE);
+        if ($lock === null) {
             return [];
         }
 
@@ -792,7 +922,7 @@ class File_Upload_Handler {
                     && !empty($existing_session['path'])
                     && self::path_is_in_directory(dirname((string) $existing_session['path']), $custom_upload_dir);
 
-                return $same_upload ? self::touch_upload_session($upload_id, $existing_session) : [];
+                return $same_upload ? $existing_session : [];
             }
 
             $client_id = self::get_upload_client_id();
@@ -821,6 +951,7 @@ class File_Upload_Handler {
                 'field_id' => $field_id,
                 'client' => $client_id,
                 'chunks_total' => $chunks_total,
+                'next_chunk' => 0,
                 'created_at' => $created_at,
                 'last_activity' => $created_at,
                 'finalized' => false,
@@ -834,9 +965,7 @@ class File_Upload_Handler {
             self::save_upload_session($upload_id, $session);
             return $session;
         } finally {
-            flock($lock, LOCK_UN);
-            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the native handle opened solely to acquire the flock() lock.
-            fclose($lock);
+            self::release_lock($lock);
         }
     }
 
@@ -1070,22 +1199,142 @@ class File_Upload_Handler {
     }
 
     /**
-     * Refresh the activity stamp of a session that is still being uploaded.
+     * Append one chunk to its upload session, and finalize the session after the last one.
+     *
+     * Chunks must arrive strictly in order. A duplicate or skipped chunk still
+     * assembles into a file of plausible size, so it discards the session
+     * instead of being appended. Every change to an existing session is made
+     * under that session's lock, so two requests carrying the same chunk cannot
+     * both find it next in line. The first chunk may be resent while nothing
+     * follows it: it rewrites the file from the start, so a retry after a lost
+     * response stays harmless.
+     *
+     * A discarded session is deleted after the lock is released, because the
+     * lock file lives in the directory being deleted.
+     *
+     * @return array{session?:array,error?:string} The updated session, or an escaped error message.
      */
-    protected static function touch_upload_session(string $upload_id, array $session): array {
+    protected static function store_upload_chunk(string $upload_id, array $session, int $chunk_index, string $tmp_name, int $max_file_size_bytes, array $allowed_types): array {
+        $upload_path = (string) ($session['path'] ?? '');
+        $lock = $upload_path !== '' ? self::acquire_lock(dirname($upload_path) . '/' . self::SESSION_CHUNK_LOCK_FILE) : null;
+        if ($lock === null) {
+            return [
+                'error' => esc_html__('Upload session is invalid', 'elzo-forms'),
+            ];
+        }
+
+        try {
+            $result = self::append_chunk_to_session($upload_id, $upload_path, $chunk_index, $tmp_name, $max_file_size_bytes, $allowed_types);
+        } finally {
+            self::release_lock($lock);
+        }
+
+        if (!empty($result['discard'])) {
+            self::delete_upload_session($upload_id);
+            unset($result['discard']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Write one chunk while the caller holds the session's chunk lock.
+     *
+     * @return array{session?:array,error?:string,discard?:bool}
+     */
+    protected static function append_chunk_to_session(string $upload_id, string $upload_path, int $chunk_index, string $tmp_name, int $max_file_size_bytes, array $allowed_types): array {
+        // Re-read under the lock: the copy the caller loaded may already be stale.
+        $session = self::get_upload_session($upload_id);
+        if (empty($session['path']) || (string) $session['path'] !== $upload_path || !empty($session['finalized'])) {
+            return [
+                'error' => esc_html__('Upload session is invalid', 'elzo-forms'),
+            ];
+        }
+
+        $next_chunk = max(0, intval($session['next_chunk'] ?? 0));
+        $in_order = $chunk_index === 0 ? $next_chunk <= 1 : $chunk_index === $next_chunk;
+        if (!$in_order) {
+            return [
+                'error' => esc_html__('The file arrived out of order. Please upload it again.', 'elzo-forms'),
+                'discard' => true,
+            ];
+        }
+
+        $existing_size = $chunk_index > 0 && file_exists($upload_path) ? (int) filesize($upload_path) : 0;
+        $chunk_size = (int) filesize($tmp_name);
+        if ($chunk_size < 0 || $existing_size + $chunk_size > $max_file_size_bytes) {
+            return [
+                'error' => self::get_file_size_error_message($existing_size + max(0, $chunk_size), $max_file_size_bytes),
+                'discard' => true,
+            ];
+        }
+
+        try {
+            self::process_chunk($upload_path, $chunk_index, $tmp_name);
+        } catch (\Exception $e) {
+            // A failed write leaves the file in an unknown state, so it cannot be resumed.
+            return [
+                'error' => esc_html($e->getMessage()),
+                'discard' => true,
+            ];
+        }
+
+        // Re-check the assembled file in case its size changed between the preflight check and write.
+        clearstatcache(true, $upload_path);
+        $current_size = (int) filesize($upload_path);
+        if ($current_size > $max_file_size_bytes) {
+            return [
+                'error' => self::get_file_size_error_message($current_size, $max_file_size_bytes),
+                'discard' => true,
+            ];
+        }
+
+        $session['next_chunk'] = $chunk_index + 1;
         $session['last_activity'] = time();
 
-        self::save_upload_session($upload_id, $session);
-        self::write_session_marker($upload_id, $session);
+        if ($session['next_chunk'] < intval($session['chunks_total'] ?? 1)) {
+            self::save_upload_session($upload_id, $session);
+            self::write_session_marker($upload_id, $session);
 
-        return $session;
+            return [
+                'session' => $session,
+            ];
+        }
+
+        $validation_error = self::validate_file_type($upload_path, $allowed_types);
+        if ($validation_error) {
+            return [
+                'error' => $validation_error,
+                'discard' => true,
+            ];
+        }
+
+        $finalized_session = self::finalize_upload_session($upload_id, $session);
+        if (empty($finalized_session)) {
+            return [
+                'error' => esc_html__('The upload could not be completed. Please try again.', 'elzo-forms'),
+                'discard' => true,
+            ];
+        }
+
+        return [
+            'session' => $finalized_session,
+        ];
     }
 
     /**
      * Mark an assembled upload as ready for form submission.
+     *
+     * @return array The finalized session, or an empty array when no secure
+     *               token could be generated. Nothing is saved in that case.
      */
     protected static function finalize_upload_session(string $upload_id, array $session): array {
-        $session['token'] = self::generate_upload_token();
+        $token = self::generate_upload_token();
+        if ($token === '') {
+            return [];
+        }
+
+        $session['token'] = $token;
         $session['finalized'] = true;
         $session['completed_at'] = time();
         $session['last_activity'] = $session['completed_at'];
@@ -1234,7 +1483,61 @@ class File_Upload_Handler {
     protected static function delete_upload_session(string $upload_id): void {
         $session = self::get_upload_session($upload_id);
         delete_transient(self::get_upload_session_key($upload_id));
+        self::delete_session_directory($session);
+    }
 
+    /**
+     * Remove a temporary upload on behalf of the visitor who uploaded it.
+     *
+     * The session is re-read and checked under its chunk lock, so a chunk being
+     * written finishes first, and a final chunk that lands between the caller's
+     * lookup and this check still demands the token. Deleting the transient
+     * under the lock makes every later chunk find no session; the directory,
+     * which holds the lock file, goes after the lock is released.
+     *
+     * @param string $upload_id    Upload session ID.
+     * @param string $session_path File path the caller found in the session.
+     * @param int    $form_id      Form the request claims the upload belongs to.
+     * @param string $field_id     Field the request claims the upload belongs to.
+     * @param string $file_url     Tokenized URL, required once the upload is finalized.
+     * @return bool Whether the upload was removed.
+     */
+    protected static function remove_upload_session(string $upload_id, string $session_path, int $form_id, string $field_id, string $file_url): bool {
+        $lock = self::acquire_lock(dirname($session_path) . '/' . self::SESSION_CHUNK_LOCK_FILE);
+        if ($lock === null) {
+            return false;
+        }
+
+        try {
+            $session = self::get_upload_session($upload_id);
+            $authorized = !empty($session['path'])
+                && (string) $session['path'] === $session_path
+                && intval($session['form_id'] ?? 0) === $form_id
+                && (string) ($session['field_id'] ?? '') === $field_id;
+
+            if ($authorized && !empty($session['finalized'])) {
+                $verified_upload = self::resolve_submitted_file_url($file_url, $field_id, $form_id);
+                $authorized = $verified_upload !== null && $verified_upload['upload_id'] === $upload_id;
+            }
+
+            if ($authorized) {
+                delete_transient(self::get_upload_session_key($upload_id));
+            }
+        } finally {
+            self::release_lock($lock);
+        }
+
+        if ($authorized) {
+            self::delete_session_directory($session);
+        }
+
+        return $authorized;
+    }
+
+    /**
+     * Delete the directory of one temporary upload session.
+     */
+    protected static function delete_session_directory(array $session): void {
         $path = isset($session['path']) && is_string($session['path']) ? self::normalize_path($session['path']) : '';
         $unattached_dir = self::normalize_path(self::get_unattached_upload_dir());
         $session_directory = $path !== '' ? dirname($path) : '';
@@ -1257,13 +1560,66 @@ class File_Upload_Handler {
 
     /**
      * Generate an unguessable token for the finalized upload.
+     *
+     * The token is the only proof that a submitted URL belongs to the visitor
+     * who uploaded the file, so there is no weaker fallback: without a secure
+     * random source the upload fails instead of receiving a guessable token.
+     *
+     * @return string Hex token, or an empty string when no secure source is available.
      */
     protected static function generate_upload_token(): string {
+        return self::generate_secure_hex(24);
+    }
+
+    /**
+     * Read bytes from the operating system CSPRNG as hex.
+     *
+     * random_bytes() is the source WordPress itself relies on. It only throws
+     * when the platform cannot supply secure randomness, and every caller
+     * treats the empty result as a failure.
+     */
+    protected static function generate_secure_hex(int $length): string {
         try {
-            return bin2hex(random_bytes(24));
+            return bin2hex(random_bytes($length));
         } catch (\Exception $e) {
-            return md5(uniqid('', true));
+            return '';
         }
+    }
+
+    /**
+     * Open and exclusively lock a lock file.
+     *
+     * @return resource|null Lock handle, or null when the lock could not be taken.
+     */
+    protected static function acquire_lock(string $lock_path) {
+        if (!is_dir(dirname($lock_path))) {
+            return null;
+        }
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires a native file handle.
+        $lock = fopen($lock_path, 'c');
+        if ($lock === false) {
+            return null;
+        }
+
+        if (!flock($lock, LOCK_EX)) {
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the native handle opened solely to acquire the flock() lock.
+            fclose($lock);
+            return null;
+        }
+
+        return $lock;
+    }
+
+    /**
+     * Release a lock taken by acquire_lock().
+     *
+     * @param resource $lock Lock handle.
+     */
+    protected static function release_lock($lock): void {
+        flock($lock, LOCK_UN);
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Closes the native handle opened solely to acquire the flock() lock.
+        fclose($lock);
     }
 
     /**
@@ -1325,7 +1681,12 @@ class File_Upload_Handler {
      */
     protected static function create_randomized_upload_directory(string $parent_directory): string {
         for ($attempt = 0; $attempt < 5; $attempt++) {
-            $directory = rtrim($parent_directory, '/\\') . '/' . self::generate_random_storage_component();
+            $component = self::generate_random_storage_component();
+            if ($component === '') {
+                return '';
+            }
+
+            $directory = rtrim($parent_directory, '/\\') . '/' . $component;
             if (file_exists($directory)) {
                 continue;
             }
@@ -1435,13 +1796,13 @@ class File_Upload_Handler {
 
     /**
      * Generate a cryptographically random path component.
+     *
+     * Permanent upload URLs are public, so their unguessable path is part of
+     * their protection. wp_generate_uuid4() draws from mt_rand() and is no
+     * substitute, so this fails closed with an empty string instead.
      */
     protected static function generate_random_storage_component(): string {
-        try {
-            return bin2hex(random_bytes(24));
-        } catch (\Exception $e) {
-            return str_replace('-', '', wp_generate_uuid4());
-        }
+        return self::generate_secure_hex(24);
     }
 
     /**

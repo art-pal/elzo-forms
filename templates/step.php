@@ -12,11 +12,12 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.1.0
  *
  * @var ElzoForms\Form\Step $step Step object
  * @var int $steps_total Total number of steps
  * @var array $texts_settings Text settings from form
+ * @var string $form_instance_suffix DOM ID suffix for repeated form instances
  */
 
 // Exit if accessed directly
@@ -71,6 +72,7 @@ $field_layout = $step_data['field_layout'] ?? [];
                 'form_settings' => $form_settings ?? [],
                 'texts_settings' => $texts_settings ?? [],
                 'form_id' => $form_id ?? null,
+                'form_instance_suffix' => $form_instance_suffix ?? '',
             ]));
 
             // Close column if field has width
@@ -95,7 +97,7 @@ $field_layout = $step_data['field_layout'] ?? [];
             </div>
         <?php endif; ?>
         <div class="elzo-forms-column elzo-forms-flex-1">
-            <?php if ($steps_total == $step_index + 1): ?>
+            <?php if ($steps_total === $step_index + 1): ?>
                 <?php if(!$step->has_submit_button()){ ?>
                     <button type="submit" class="elzo-forms-button elzo-forms-submit-button elzo-forms-w-100"><?php echo esc_html($texts_settings['submit_button_text']); ?></button>
                 <?php } ?>

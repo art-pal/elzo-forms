@@ -29,7 +29,25 @@ class Conditional_Logic {
      * Get all supported field-value comparison operators.
      */
     public static function get_supported_operators(): array {
-        return ['==', '!=', '>', '<', 'like', 'not_like', 'starts_with', 'ends_with', 'pattern'];
+        return array_merge(
+            ['==', '!=', '>', '<', 'like', 'not_like', 'starts_with', 'ends_with', 'pattern'],
+            self::get_count_operators()
+        );
+    }
+
+    /**
+     * Get operators that compare how many values a field submitted.
+     *
+     * Every other operator asks a question about the values themselves, which
+     * leaves the size of the list unreachable: a field that submits five files
+     * or five checked options has no single value meaning "five". These ask
+     * about the list instead, so they are useful to any field that can submit
+     * more than one value.
+     *
+     * @return array
+     */
+    public static function get_count_operators(): array {
+        return ['count_eq', 'count_gt', 'count_lt'];
     }
 
     /**
@@ -53,6 +71,9 @@ class Conditional_Logic {
             'starts_with' => __('Value starts with', 'elzo-forms'),
             'ends_with' => __('Value ends with', 'elzo-forms'),
             'pattern' => __('Value matches pattern', 'elzo-forms'),
+            'count_eq' => __('Number of values is', 'elzo-forms'),
+            'count_gt' => __('Number of values is greater than', 'elzo-forms'),
+            'count_lt' => __('Number of values is less than', 'elzo-forms'),
         ];
     }
 
@@ -69,11 +90,25 @@ class Conditional_Logic {
      * list — add a case below and filter the returned array before returning.
      */
     public static function get_condition_types(string $usage_context = ''): array {
-        return [
+        $types = [
             'field'  => __('Field value', 'elzo-forms'),
             'auth'   => __('Authentication', 'elzo-forms'),
             'page'   => __('Page', 'elzo-forms'),
         ];
+
+        /**
+         * Filters the condition types registered for a usage context.
+         *
+         * Presentation-only entries must not be added here. A type in this
+         * registry is treated as genuinely supported by the runtime owner.
+         *
+         * @filter elzo_forms_condition_types
+         * @param array<string, string> $types Condition type => label.
+         * @param string $usage_context Usage context, such as "field".
+         */
+        $types = apply_filters('elzo_forms_condition_types', $types, $usage_context);
+
+        return is_array($types) ? $types : [];
     }
 
     /**
@@ -84,16 +119,46 @@ class Conditional_Logic {
     }
 
     /**
+     * Whether a saved rule of this type may be kept when a form is saved.
+     *
+     * Storing a rule and supporting it are separate questions. A type can be
+     * picked and evaluated only while it is registered (get_condition_types()),
+     * but a rule whose owner is inactive right now, such as PRO deactivated or
+     * an addon switched off, still belongs to the form and must survive a
+     * plain Save. Such a type only has to be a well-formed machine name; it
+     * gains no runtime support from being stored, and is_visible() keeps
+     * failing it closed until its owner registers it again.
+     */
+    public static function is_storable_condition_type(string $type, string $usage_context = ''): bool {
+        if ($type === '') return false;
+
+        if (isset(self::get_condition_types($usage_context)[$type])) return true;
+
+        return preg_match('/^[a-z0-9_-]{1,64}$/', $type) === 1;
+    }
+
+    /**
      * Operator lists per condition type for the given usage context.
      *
      * @see get_condition_types() for $usage_context values.
      */
     public static function get_condition_operators_map(string $usage_context = ''): array {
-        return [
+        $operators = [
             'field'  => self::get_supported_operators(),
-            'page' => ['page_id_equals', 'page_id_not_equals', 'page_id_in', 'page_id_not_in', 'post_type_equals', 'post_type_not_equals'],
+            'page' => ['page_id_equals', 'page_id_not_equals', 'page_id_in', 'page_id_not_in', 'post_type_equals', 'post_type_not_equals', 'post_type_in', 'post_type_not_in'],
             'auth'   => ['is_logged_in', 'is_guest'],
         ];
+
+        /**
+         * Filters operator lists for condition types in a usage context.
+         *
+         * @filter elzo_forms_condition_operators_map
+         * @param array<string, array<int, string>> $operators Operators by type.
+         * @param string $usage_context Usage context, such as "field".
+         */
+        $operators = apply_filters('elzo_forms_condition_operators_map', $operators, $usage_context);
+
+        return is_array($operators) ? $operators : [];
     }
 
     /**
@@ -119,6 +184,9 @@ class Conditional_Logic {
             'starts_with'     => __('starts with', 'elzo-forms'),
             'ends_with'       => __('ends with', 'elzo-forms'),
             'pattern'         => __('matches pattern', 'elzo-forms'),
+            'count_eq'        => __('number of values is', 'elzo-forms'),
+            'count_gt'        => __('number of values is greater than', 'elzo-forms'),
+            'count_lt'        => __('number of values is less than', 'elzo-forms'),
             'is_logged_in'    => __('is logged in', 'elzo-forms'),
             'is_guest'        => __('is guest', 'elzo-forms'),
             'page_id_equals'       => __('page ID equals', 'elzo-forms'),
@@ -127,9 +195,20 @@ class Conditional_Logic {
             'page_id_not_in'       => __('page ID not in list', 'elzo-forms'),
             'post_type_equals'     => __('post type is', 'elzo-forms'),
             'post_type_not_equals' => __('post type is not', 'elzo-forms'),
+            'post_type_in'         => __('post type in list', 'elzo-forms'),
+            'post_type_not_in'     => __('post type not in list', 'elzo-forms'),
         ];
 
-        return $labels;
+        /**
+         * Filters condition operator labels for a usage context.
+         *
+         * @filter elzo_forms_condition_operator_labels
+         * @param array<string, string> $labels Operator labels.
+         * @param string $usage_context Usage context, such as "field".
+         */
+        $labels = apply_filters('elzo_forms_condition_operator_labels', $labels, $usage_context);
+
+        return is_array($labels) ? $labels : [];
     }
 
     /**
@@ -305,10 +384,14 @@ class Conditional_Logic {
             $page_ids = array_values(array_filter(array_map('intval', explode(',', (string) $settings['value']))));
         }
 
-        $post_type = isset($settings['post_type']) ? sanitize_key((string) $settings['post_type']) : '';
-        if ($post_type === '' && !empty($settings['value'])) {
-            $post_type = sanitize_key((string) $settings['value']);
+        $raw_post_types = $settings['post_types'] ?? ($settings['post_type'] ?? ($settings['value'] ?? []));
+        if (!is_array($raw_post_types)) {
+            $raw_post_types = preg_split('/[\s,]+/', (string) $raw_post_types, -1, PREG_SPLIT_NO_EMPTY);
         }
+        $post_types = array_values(array_unique(array_filter(array_map(function ($post_type): string {
+            return is_scalar($post_type) ? sanitize_key((string) $post_type) : '';
+        }, (array) $raw_post_types))));
+        $post_type = $post_types[0] ?? '';
 
         switch ($operator) {
             case 'page_id_equals':
@@ -323,6 +406,10 @@ class Conditional_Logic {
                 return $post_type !== '' && $current_post_type === $post_type;
             case 'post_type_not_equals':
                 return $post_type !== '' && $current_post_type !== $post_type;
+            case 'post_type_in':
+                return $post_types !== [] && in_array($current_post_type, $post_types, true);
+            case 'post_type_not_in':
+                return $post_types !== [] && !in_array($current_post_type, $post_types, true);
             default:
                 return false;
         }
@@ -381,9 +468,34 @@ class Conditional_Logic {
             case 'pattern':
                 return self::matches_pattern_for_all_values($values, $expected_value);
 
+            case 'count_eq':
+                return self::count_submitted_values($values) === intval($expected_value);
+
+            case 'count_gt':
+                return self::count_submitted_values($values) > intval($expected_value);
+
+            case 'count_lt':
+                return self::count_submitted_values($values) < intval($expected_value);
+
             default:
                 return false;
         }
+    }
+
+    /**
+     * Count the values a field actually submitted.
+     *
+     * An empty field still normalizes to a single empty string so that the
+     * value operators have something to compare, so counting the list as-is
+     * would report one value for a field that submitted none. Empty strings
+     * are dropped here instead: nothing was uploaded, checked or selected.
+     */
+    private static function count_submitted_values(array $values): int {
+        $submitted = array_filter($values, static function($value){
+            return (string) $value !== '';
+        });
+
+        return count($submitted);
     }
 
     /**

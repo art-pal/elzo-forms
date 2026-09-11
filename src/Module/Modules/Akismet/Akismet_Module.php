@@ -268,8 +268,8 @@ class Akismet_Module extends Module {
                     'id' => $field_id,
                     'key' => (string) $field->get_field_key(),
                     'label' => $this->get_field_label($field),
-                    'type' => $field->get_type(),
-                    'subtype' => (string) $field->get('subtype', ''),
+                    'type' => $field->get_base_type(),
+                    'subtype' => $field->get_subtype(),
                     'value' => $value,
                 ];
             }
@@ -282,10 +282,7 @@ class Akismet_Module extends Module {
      * Check whether an input field should be excluded from Akismet payloads.
      */
     private function should_skip_field(\ElzoForms\Field\Field $field): bool {
-        $type = $field->get_type();
-        $subtype = (string) $field->get('subtype', '');
-
-        return $type === 'file' || $subtype === 'password';
+        return $field->get_base_type() === 'file' || $field->get_subtype() === 'password';
     }
 
     /**

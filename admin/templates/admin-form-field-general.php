@@ -12,12 +12,15 @@
 <div class="elzo-forms-row elzo-forms-row-2-cols elzo-forms-field-control-group">
     <div class="elzo-forms-column">
         <div class="elzo-forms-field-control-group">
-            <label for="elzo-forms-field-type-<?php echo esc_attr($field_id); ?>" class="elzo-forms-field-control-label"><?php esc_html_e('Type', 'elzo-forms'); ?></label>
-            <select name="elzo_form_fields[<?php echo esc_attr($step_index); ?>][fields][<?php echo esc_attr($field_index); ?>][type]" class="elzo-forms-field-control elzo-forms-field-header-part elzo-forms-field-type-select" id="elzo-forms-field-type-<?php echo esc_attr($field_id); ?>">
-                <?php foreach(\ElzoForms\Utilities\Admin::get_field_types(null, 'label') as $option_value => $option_label): ?>
-                    <option value="<?php echo esc_attr($option_value); ?>" <?php selected($field_type, $option_value); ?>><?php echo esc_html($option_label); ?></option>
-                <?php endforeach; ?>
-            </select>
+            <span class="elzo-forms-field-control-label"><?php esc_html_e('Type', 'elzo-forms'); ?></span>
+            <input type="hidden" name="elzo_form_fields[<?php echo esc_attr($step_index); ?>][fields][<?php echo esc_attr($field_index); ?>][type]" value="<?php echo esc_attr($field_type); ?>" id="elzo-forms-field-type-<?php echo esc_attr($field_id); ?>" class="elzo-forms-field-type-value">
+            <?php // The type is chosen in the same picker as "Add Field". ?>
+            <button type="button" class="elzo-forms-field-type-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="elzo-forms-field-picker">
+                <span class="screen-reader-text"><?php esc_html_e('Field type:', 'elzo-forms'); ?> </span>
+                <?php echo \ElzoForms\Admin\Field_Picker::get_icon_svg($field_type_item['icon']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Fixed SVG artwork from Field_Picker; unknown icon keys fall back to built-in artwork. ?>
+                <span class="elzo-forms-field-type-button-label"><?php echo esc_html($field_type_item['label']); ?></span>
+                <i class="elzo-icon elzo-icon-chevron-down" aria-hidden="true"></i>
+            </button>
         </div>
     </div>
     <div class="elzo-forms-column">

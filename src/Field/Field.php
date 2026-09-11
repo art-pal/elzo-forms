@@ -73,22 +73,26 @@ abstract class Field implements \ArrayAccess {
             $field = [];
         }
 
-        // Get field type
-        $type = $field['type'] ?? 'text';
+        $class_name = self::get_class_for_type($field['type'] ?? 'text');
 
-        // Get registered field types
+        return new $class_name($field);
+    }
+
+    /**
+     * Get the class implementing a field type.
+     *
+     * Variants share the class of their base type: "text:email" is a
+     * Field_Text. Unknown types fall back to the Text field class.
+     *
+     * @param mixed $type Field type identifier.
+     * @return string Class name.
+     */
+    protected static function get_class_for_type($type): string {
+        $base_type = is_scalar($type) ? Field_Type::get_base_type((string) $type) : 'text';
         $field_types = self::get_registered_field_types();
+        $class_name = $field_types[$base_type] ?? $field_types['text'] ?? Field_Text::class;
 
-        // Get class name for field type
-        $class_name = $field_types[$type] ?? $field_types['text'] ?? Text_Field::class;
-
-        // Create instance
-        if (class_exists($class_name)) {
-            return new $class_name($field);
-        }
-
-        // Fallback to Text_Field
-        return new Text_Field($field);
+        return class_exists($class_name) ? $class_name : Field_Text::class;
     }
 
     /**
@@ -108,11 +112,38 @@ abstract class Field implements \ArrayAccess {
     /**
      * Register a custom field type.
      *
-     * @param string $type Field type slug
+     * @deprecated 1.1.0 Use the elzo_forms_field_types filter, which also
+     *             gives the type its label in the builder.
+     *
+     * The type is added to the same registry the filter feeds, so field
+     * creation, the builder's type picker and type changes all accept it.
+     *
+     * @param string $type Field type key: letters, digits, "_" and "-" only.
      * @param string $class_name Fully qualified class name
      */
     public static function register_field_type(string $type, string $class_name): void {
-        self::$field_types[$type] = $class_name;
+        _deprecated_function(__METHOD__, '1.1.0', 'the elzo_forms_field_types filter');
+
+        if (!Field_Type::is_valid_key($type)) {
+            _doing_it_wrong(
+                __METHOD__,
+                esc_html__('Field type keys may only contain letters, digits, "_" and "-"; ":" separates a base type from its subtype.', 'elzo-forms'),
+                '1.1.0'
+            );
+            return;
+        }
+
+        add_filter('elzo_forms_field_types', static function ($types) use ($type, $class_name) {
+            $types = is_array($types) ? $types : [];
+            $definition = isset($types[$type]) && is_array($types[$type]) ? $types[$type] : ['label' => $type];
+            $definition['class'] = $class_name;
+            $types[$type] = $definition;
+
+            return $types;
+        });
+
+        // The class map is cached from the registry; the next lookup rebuilds it.
+        self::$field_types = [];
     }
 
     /**
@@ -121,7 +152,13 @@ abstract class Field implements \ArrayAccess {
      * @param array $field Field data array
      */
     public function __construct($field = []) {
-        $this->data = wp_parse_args($field, $this->get_defaults());
+        $defaults = $this->get_defaults();
+        $this->data = wp_parse_args($field, $defaults);
+
+        // "type" is the canonical composite type. Fields saved before composite
+        // types keep their Text variant in "subtype"; it is folded into "type"
+        // here, so the next save stores the composite format only.
+        $this->data = Field_Type::normalize_field($this->data, (string) ($defaults['type'] ?? 'text'));
 
         // Generate ID if not set
         if (empty($this->data['id'])) {
@@ -169,17 +206,9 @@ abstract class Field implements \ArrayAccess {
      * @return array Normalized field data
      */
     public static function normalize_definition(array $field): array {
-        $type = $field['type'] ?? 'text';
-        $field_types = self::get_registered_field_types();
-        $class_name = $field_types[$type] ?? $field_types['text'] ?? Text_Field::class;
+        $class_name = self::get_class_for_type($field['type'] ?? 'text');
 
-        if (class_exists($class_name)) {
-            $instance = new $class_name($field);
-        } else {
-            $instance = new Text_Field($field);
-        }
-
-        return $instance->to_array();
+        return (new $class_name($field))->to_array();
     }
 
     /**
@@ -295,12 +324,33 @@ abstract class Field implements \ArrayAccess {
     }
 
     /**
-     * Get field type.
+     * Get the field type identifier, a composite such as "text:email" for variants.
      *
      * @return string
      */
     public function get_type(): string {
         return $this->data['type'] ?? 'text';
+    }
+
+    /**
+     * Get the base type, e.g. "text" for "text:email".
+     *
+     * Use it wherever behavior belongs to the field implementation rather
+     * than to one variant: templates, CSS classes, type checks.
+     *
+     * @return string
+     */
+    public function get_base_type(): string {
+        return Field_Type::get_base_type($this->get_type());
+    }
+
+    /**
+     * Get the validated subtype of the field type, e.g. "email" for "text:email".
+     *
+     * @return string Empty for types without variants.
+     */
+    public function get_subtype(): string {
+        return Field_Type::get_subtype($this->get_type());
     }
 
     /**
@@ -405,7 +455,7 @@ abstract class Field implements \ArrayAccess {
     public function supports_under_label(): bool {
         $excluded_types = ['hidden', 'content'];
 
-        return !in_array($this->get_type(), $excluded_types, true);
+        return !in_array($this->get_base_type(), $excluded_types, true);
     }
 
     /**
@@ -416,7 +466,7 @@ abstract class Field implements \ArrayAccess {
     public function supports_under_field(): bool {
         $excluded_types = ['hidden'];
 
-        return !in_array($this->get_type(), $excluded_types, true);
+        return !in_array($this->get_base_type(), $excluded_types, true);
     }
 
     /**
@@ -565,13 +615,17 @@ abstract class Field implements \ArrayAccess {
     /**
      * Get field ID attribute.
      *
+     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
      * @return string
      */
-    public function get_field_id(): string {
+    public function get_field_id(string $form_instance_suffix = ''): string {
         $custom_id = $this->get('custom_id');
         $field_id = $this->get_id();
+        $base_id = !empty($custom_id) && is_scalar($custom_id)
+            ? trim((string) $custom_id)
+            : "elzo-forms-field-$field_id";
 
-        return $custom_id ?: "elzo-forms-field-$field_id";
+        return $base_id . self::normalize_form_instance_suffix($form_instance_suffix);
     }
 
     /**
@@ -581,7 +635,7 @@ abstract class Field implements \ArrayAccess {
      * @return string
      */
     public function get_field_class(array $form_settings = []): string {
-        $type = $this->get_type();
+        $type = $this->get_base_type();
         $required = $this->is_required();
         $custom_class = $this->get('custom_class');
 
@@ -612,13 +666,17 @@ abstract class Field implements \ArrayAccess {
     /**
      * Get field wrapper ID attribute.
      *
+     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
      * @return string
      */
-    public function get_wrapper_id(): string {
+    public function get_wrapper_id(string $form_instance_suffix = ''): string {
         $custom_id = $this->get('wrapper_custom_id');
         $field_id = $this->get_id();
+        $base_id = !empty($custom_id) && is_scalar($custom_id)
+            ? trim((string) $custom_id)
+            : "elzo-forms-field-wrapper-$field_id";
 
-        return $custom_id ?: "elzo-forms-field-wrapper-$field_id";
+        return $base_id . self::normalize_form_instance_suffix($form_instance_suffix);
     }
 
     /**
@@ -641,14 +699,15 @@ abstract class Field implements \ArrayAccess {
     /**
      * Get field wrapper attributes as HTML string.
      *
+     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
      * @return string
      */
-    public function get_wrapper_attributes(): string {
+    public function get_wrapper_attributes(string $form_instance_suffix = ''): string {
         $logic_rules = $this->get_logic_rules();
         $attributes = [];
 
         $attributes[] = 'class="' . esc_attr($this->get_wrapper_class()) . '"';
-        $attributes[] = 'id="' . esc_attr($this->get_wrapper_id()) . '"';
+        $attributes[] = 'id="' . esc_attr($this->get_wrapper_id($form_instance_suffix)) . '"';
         $attributes[] = 'data-ef-field-id="' . esc_attr((string) $this->get_id()) . '"';
 
         if ($logic_rules) {
@@ -671,15 +730,16 @@ abstract class Field implements \ArrayAccess {
      * Get field attributes as HTML string.
      *
      * @param array $form_settings Optional form settings
+     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
      * @return string
      */
-    public function get_field_attributes(array $form_settings = []): string {
+    public function get_field_attributes(array $form_settings = [], string $form_instance_suffix = ''): string {
         $logic_rules = $this->get_logic_rules();
         $attributes = [];
 
         $attributes[] = 'name="' . esc_attr($this->get_field_name()) . '"';
         $attributes[] = 'class="' . esc_attr($this->get_field_class($form_settings)) . '"';
-        $attributes[] = 'id="' . esc_attr($this->get_field_id()) . '"';
+        $attributes[] = 'id="' . esc_attr($this->get_field_id($form_instance_suffix)) . '"';
 
         $placeholder = $this->get_placeholder();
         if ($placeholder) {
@@ -711,6 +771,7 @@ abstract class Field implements \ArrayAccess {
 
         $form_settings = $context['form_settings'] ?? [];
         $step_index = $this->get('step_index', 0);
+        $form_instance_suffix = self::normalize_form_instance_suffix($context['form_instance_suffix'] ?? '');
 
         $data = [
             // Field object
@@ -719,7 +780,8 @@ abstract class Field implements \ArrayAccess {
             // Basic properties
             'field_id' => $this->get_id(),
             'field_index' => $this->get('index', 0),
-            'field_type' => $this->get_type(),
+            // Templates are selected and styled per base type.
+            'field_type' => $this->get_base_type(),
             'required' => $this->is_required(),
             'step_index' => $step_index,
 
@@ -742,13 +804,14 @@ abstract class Field implements \ArrayAccess {
 
             // Attributes
             'name' => $this->get_field_name(),
-            'id' => $this->get_field_id(),
+            'id' => $this->get_field_id($form_instance_suffix),
             'class' => $this->get_field_class($form_settings),
-            'wrapper_id' => $this->get_wrapper_id(),
+            'wrapper_id' => $this->get_wrapper_id($form_instance_suffix),
             'wrapper_class' => $this->get_wrapper_class(),
 
             // Context
             'form_id' => (int) ($context['form_id'] ?? 0),
+            'form_instance_suffix' => $form_instance_suffix,
             'form_settings' => $form_settings,
             'texts_settings' => $context['texts_settings'] ?? [],
 
@@ -763,10 +826,28 @@ abstract class Field implements \ArrayAccess {
     }
 
     /**
+     * Accept only the numeric suffixes generated by Form::render().
+     *
+     * The suffix affects DOM identifiers only. Stored field IDs, input names,
+     * data-ef-field-id and the submission payload remain unchanged.
+     *
+     * @param mixed $suffix Render-instance suffix.
+     */
+    private static function normalize_form_instance_suffix($suffix): string {
+        if (!is_string($suffix) || !preg_match('/^-(?:[2-9]|[1-9][0-9]+)$/', $suffix)) {
+            return '';
+        }
+
+        return $suffix;
+    }
+
+    /**
      * Get allowed operators for conditional logic.
      *
-     * Return null to use the full operator list, or an empty array to disable
-     * conditional logic comparisons for this field type.
+     * Return null to offer every value operator, or an empty array to disable
+     * conditional logic comparisons for this field type. The number-of-values
+     * operators are not part of that default: a field that can submit several
+     * values lists them itself, as Checkbox does.
      *
      * Child classes can override this to define their own logic capabilities.
      *
@@ -774,6 +855,26 @@ abstract class Field implements \ArrayAccess {
      */
     public function get_logic_operators(): ?array {
         return null;
+    }
+
+    /**
+     * Get the operators the builder offers for this field, with the default resolved.
+     *
+     * Counting the values of a field that submits a single value would only
+     * restate whether it is filled, so the default leaves those operators out.
+     *
+     * @return array
+     */
+    public function get_admin_logic_operators(): array {
+        $operators = $this->get_logic_operators();
+        if (is_array($operators)) {
+            return array_values($operators);
+        }
+
+        return array_values(array_diff(
+            \ElzoForms\Utilities\Conditional_Logic::get_supported_operators(),
+            \ElzoForms\Utilities\Conditional_Logic::get_count_operators()
+        ));
     }
 
     /**
@@ -828,6 +929,18 @@ abstract class Field implements \ArrayAccess {
     }
 
     /**
+     * Get the hint shown in the conditional logic value input.
+     *
+     * Child classes override this when the value a condition compares against
+     * is not obvious from the field itself.
+     *
+     * @return string
+     */
+    public function get_logic_value_placeholder(): string {
+        return '';
+    }
+
+    /**
      * Get field data prepared for the admin editor.
      *
      * Includes logic metadata so the JS admin UI can work without hardcoded
@@ -838,9 +951,10 @@ abstract class Field implements \ArrayAccess {
     public function get_admin_field_data(): array {
         $field_data = $this->to_array();
 
-        $field_data['logic_operators'] = $this->get_logic_operators();
+        $field_data['logic_operators'] = $this->get_admin_logic_operators();
         $field_data['logic_value_source'] = $this->get_logic_value_source();
         $field_data['logic_value_options'] = $this->get_logic_value_options();
+        $field_data['logic_value_placeholder'] = $this->get_logic_value_placeholder();
         $field_data['read_only'] = $this->is_read_only();
 
         return $field_data;
@@ -937,7 +1051,7 @@ abstract class Field implements \ArrayAccess {
         $field_data = $this->get_data($args);
 
         // Try to locate template (checks theme, then plugin, then custom paths)
-        $type = $this->get_type();
+        $type = $this->get_base_type();
         $template_name = 'field-types/field-' . $type . '.php';
         $located_template = \ElzoForms\Utilities\Template_Loader::locate_template($template_name, $field_data);
 

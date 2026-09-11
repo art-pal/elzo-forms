@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.1.0
  *
  * @var array $d Field data prepared for rendering
  */
@@ -50,13 +50,13 @@ defined('ABSPATH') || exit;
         <div class="elzo-forms-d-flex elzo-forms-flex-column elzo-forms-flex-1">
             <div class="elzo-forms-d-flex elzo-forms-align-items-center">
                 <div class="elzo-forms-file-drop-area-upload-list-item-name-box elzo-forms-flex-1"></div>
-                <button type="button" class="elzo-forms-file-drop-area-upload-list-item-remove">&times;</button>
+                <button type="button" class="elzo-forms-file-drop-area-upload-list-item-remove" aria-label="<?php echo esc_attr__('Remove', 'elzo-forms'); ?>">&times;</button>
             </div>
             <div class="elzo-forms-d-flex elzo-forms-align-items-center">
-                <div class="elzo-forms-file-drop-area-upload-list-item-progress elzo-forms-flex-1">
+                <div class="elzo-forms-file-drop-area-upload-list-item-progress elzo-forms-flex-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="<?php echo esc_attr__('Upload progress', 'elzo-forms'); ?>">
                     <div class="elzo-forms-file-drop-area-upload-list-item-progress-bar" style="width:0"></div>
                 </div>
-                <div class="elzo-forms-file-drop-area-upload-list-item-progress-percentage elzo-forms-text-825">0%</div>
+                <div class="elzo-forms-file-drop-area-upload-list-item-progress-percentage elzo-forms-text-825" aria-hidden="true">0%</div>
             </div>
         </div>
         <input type="hidden" class="elzo-forms-file-drop-area-upload-list-item-input" name="<?php echo esc_attr((string) ($name ?? '')); ?>[]" value="">

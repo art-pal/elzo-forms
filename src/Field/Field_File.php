@@ -29,6 +29,42 @@ class Field_File extends Field {
     }
 
     /**
+     * Get allowed operators for conditional logic.
+     *
+     * A file field compares against the upload URLs it submits, one per
+     * uploaded file, so only the operators that mean something against those
+     * are offered. An empty value with "is" / "is not" asks whether the field
+     * holds a file at all, and "contains" matches the extension the URL keeps.
+     *
+     * The excluded ones would each be a trap: the URL ends in the upload
+     * token rather than the file name, so "ends with" can never match an
+     * extension; every URL starts with the same uploads path, so "starts
+     * with" says nothing about the file; and the URL is not a number, so the
+     * numeric comparisons are meaningless.
+     *
+     * A field that accepts several files can also be asked how many were
+     * uploaded, which no value operator can answer.
+     *
+     * @return array|null
+     */
+    public function get_logic_operators(): ?array {
+        $operators = ['==', '!=', 'like', 'not_like'];
+
+        return empty($this->get('multiple'))
+            ? $operators
+            : array_merge($operators, \ElzoForms\Utilities\Conditional_Logic::get_count_operators());
+    }
+
+    /**
+     * The stored name is randomized, so only the extension is worth matching.
+     *
+     * @return string
+     */
+    public function get_logic_value_placeholder(): string {
+        return __('.pdf, or empty for any uploaded file', 'elzo-forms');
+    }
+
+    /**
      * Validate field value.
      *
      * @param mixed $value Field value (file URLs)

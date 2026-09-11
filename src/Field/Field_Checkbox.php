@@ -177,7 +177,12 @@ class Field_Checkbox extends Field {
      * @return array|null
      */
     public function get_logic_operators(): ?array {
-        return $this->get_string_logic_operators();
+        // A checkbox group always submits a list, so how many boxes are
+        // checked is a question worth asking of every one of them.
+        return array_merge(
+            $this->get_string_logic_operators(),
+            \ElzoForms\Utilities\Conditional_Logic::get_count_operators()
+        );
     }
 
     /**

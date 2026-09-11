@@ -9,8 +9,8 @@
  * @wordpress-plugin
  * Plugin Name:       Elzo Forms
  * Plugin URI:        https://elzoforms.com
- * Description:       A WordPress plugin for creating forms.
- * Version:           1.0.0
+ * Description:       Build forms with multiple file uploads, stored submissions, conditions, multi-step flows, and Gutenberg support — free.
+ * Version:           1.1.0
  * Requires at least: 6.5
  * Tested up to:      7.1
  * Requires PHP:      7.4
@@ -24,7 +24,7 @@
 defined('ABSPATH') || exit;
 
 if (!defined('ELZO_FORMS_VERSION')) {
-    define('ELZO_FORMS_VERSION', '1.0.0');
+    define('ELZO_FORMS_VERSION', '1.1.0');
 }
 
 /**
@@ -35,7 +35,7 @@ function elzo_forms_maybe_disable_other_plugin(): bool {
     $return_after = true;
     if (function_exists('is_plugin_active') && is_plugin_active($other_slug)) {
         add_action('admin_notices', function () {
-            $message = __('Elzo Forms is active, so Elzo Forms (free) is not loaded. You can deactivate Elzo Forms (free).', 'elzo-forms');
+            $message = __('Elzo Forms PRO is active, so Elzo Forms (free) is not loaded. You can deactivate Elzo Forms (free).', 'elzo-forms');
             $notice_class = 'warning';
 
             echo '<div class="notice notice-' . esc_attr($notice_class) . '"><p>' . esc_html($message) . '</p></div>';

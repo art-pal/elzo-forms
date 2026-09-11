@@ -1,0 +1,44 @@
+.elzo-forms-block-editor .components-placeholder {
+    min-height: 180px;
+}
+
+.elzo-forms-block-editor .components-placeholder__fieldset {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.elzo-forms-block-editor .elzo-forms-block-selector,
+.elzo-forms-block-editor .elzo-forms-block-selector .components-base-control {
+    width: 100%;
+    min-width: 0;
+}
+
+.elzo-forms-block-editor .elzo-forms-block-selector .components-base-control {
+    margin-bottom: 0;
+}
+
+.elzo-forms-block-placeholder-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+}
+
+.elzo-forms-block-preview {
+    position: relative;
+    min-height: 80px;
+    pointer-events: none;
+}
+
+.elzo-forms-block-preview-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 120px;
+}
+
+.elzo-forms-block-preview .elzo-forms-admin-bar {
+    display: none;
+}

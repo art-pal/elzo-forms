@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.1.0
  *
  * @var array $d Field data prepared for rendering
  */
@@ -35,15 +35,18 @@ defined('ABSPATH') || exit;
 
 ?>
 <?php if($options){ ?>
-    <div class="elzo-forms-checkbox-list-wrapper elzo-forms-field-options-layout-<?php echo esc_attr($layout); ?> elzo-forms-checkbox-style-<?php echo esc_attr($style); ?> <?php echo $required ? 'elzo-forms-checkbox-list-required' : ''; ?>" data-min-selections="<?php echo esc_attr((string) ($min_selections ?? '')); ?>" data-max-selections="<?php echo esc_attr((string) ($max_selections ?? '')); ?>">
+    <div class="elzo-forms-checkbox-list-wrapper elzo-forms-field-options-layout-<?php echo esc_attr($layout); ?> elzo-forms-checkbox-style-<?php echo esc_attr($style); ?> <?php echo $required ? 'elzo-forms-checkbox-list-required' : ''; ?>" data-min-selections="<?php echo esc_attr((string) ($min_selections ?? '')); ?>" data-max-selections="<?php echo esc_attr((string) ($max_selections ?? '')); ?>" role="group"<?php if($label){ ?> aria-labelledby="<?php echo esc_attr($id); ?>-label"<?php } ?>>
         <?php $option_index = 0; foreach($options as $option): $option_index++;
             $option_id = $id . '-' . $option_index;
             $option_label = !empty($option['label']) ? $option['label'] : $option['value'];
             $option_description = !empty($option['description']) ? $option['description'] : '';
-            $checked = is_array($value) ? in_array($option['value'], $value) : ($value == $option['value']);
+            $option_value = (string) $option['value'];
+            $checked = is_array($value)
+                ? in_array($option_value, array_map('strval', $value), true)
+                : (string) $value === $option_value;
         ?>
             <div class="elzo-forms-checkbox-item-wrapper">
-                <input type="checkbox" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($option['value']); ?>" id="<?php echo esc_attr($option_id); ?>" class="<?php echo esc_attr($class); ?>" <?php checked($checked, true, false); ?> >
+                <input type="checkbox" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($option_value); ?>" id="<?php echo esc_attr($option_id); ?>" class="<?php echo esc_attr($class); ?>" <?php checked($checked, true, false); ?> >
                 <label for="<?php echo esc_attr($option_id); ?>">
                     <span class="elzo-forms-pseudo-checkbox-wrapper">
                         <span class="elzo-forms-pseudo-checkbox"></span>

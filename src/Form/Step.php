@@ -246,7 +246,7 @@ class Step implements \ArrayAccess {
      */
     public function has_visible_fields(): bool {
         foreach ($this->fields as $field) {
-            $type = $field->get_type();
+            $type = $field->get_base_type();
             if (!in_array($type, ['hidden'], true)) {
                 return true;
             }
@@ -263,7 +263,7 @@ class Step implements \ArrayAccess {
      */
     public function has_submit_button(): bool {
         foreach ($this->fields as $field) {
-            if ($field->get_type() === 'button' && $field->get('button_type', 'button') === 'submit') {
+            if ($field->get_base_type() === 'button' &&$field->get('button_type', 'button') === 'submit') {
                 return true;
             }
         }

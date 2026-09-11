@@ -224,6 +224,8 @@ class Helpers {
             'maximumFilesReached' => __('You can not upload more than %s files', 'elzo-forms'),
             /* translators: %s: Maximum allowed file size in megabytes. */
             'fileSizeExceeded' => __('You can not upload files larger than %s MB', 'elzo-forms'),
+            /* translators: %s: Name of the file being uploaded. */
+            'uploadProgress' => __('Upload progress: %s', 'elzo-forms'),
         ];
     }
 

@@ -25,6 +25,7 @@ class Admin {
             'form_automations_button' => 'form_automations_button',
             'settings_automations_title' => 'settings_automations_title',
             'settings_automations_button' => 'settings_automations_button',
+            'field_logic_condition_modal' => 'field_logic_condition_modal',
         ];
 
         $utm_content = $content_by_placement[$placement] ?? 'plugin_admin';
@@ -91,6 +92,13 @@ class Admin {
         // Apply filter - third parties can add: ['rating' => ['label' => 'Rating', 'class' => Rating_Field::class]]
         $types = apply_filters('elzo_forms_field_types', $types);
 
+        // Type keys follow Field_Type's key rule; ":" is reserved for composite types.
+        foreach (array_keys($types) as $type_key) {
+            if (!\ElzoForms\Field\Field_Type::is_valid_key((string) $type_key)) {
+                unset($types[$type_key]);
+            }
+        }
+
         // Return specific key
         if ($key) {
             if (!isset($types[$key])) {
@@ -147,7 +155,10 @@ class Admin {
     }
 
     /**
-     * Get field text subtypes.
+     * Get the variants of the Text field.
+     *
+     * Each variant is a Text field type of its own ("text:email", ...); see
+     * Field_Type. The "text" key is the default variant, stored as "text".
      */
     public static function get_field_text_subtypes(?string $key = null) {
         $subtypes = [
@@ -246,6 +257,59 @@ class Admin {
         $operators = \ElzoForms\Utilities\Conditional_Logic::get_operator_labels();
 
         return $key && isset($operators[$key]) ? $operators[$key] : $operators;
+    }
+
+    /**
+     * Get the post types a page condition can point at.
+     *
+     * Page conditions compare against the queried object, so every publicly
+     * queryable singular is a valid target. Attachments are public but never
+     * render a form, so they are left out.
+     *
+     * @return array<int, string> Post type slugs.
+     */
+    public static function get_content_post_types(): array {
+        $post_types = get_post_types(['public' => true], 'names');
+        $post_types = is_array($post_types) ? array_values($post_types) : [];
+        $post_types = array_values(array_diff($post_types, ['attachment']));
+
+        /**
+         * Filters the post types offered by admin content pickers and searched
+         * by the content search endpoint behind them.
+         *
+         * @filter elzo_forms_content_post_types
+         * @param array<int, string> $post_types Post type slugs.
+         */
+        $post_types = apply_filters('elzo_forms_content_post_types', $post_types);
+
+        $post_types = array_filter(array_map('sanitize_key', (array) $post_types));
+        $post_types = array_values(array_unique($post_types));
+
+        // A picker with no post type has nothing to search; pages are the baseline target.
+        return $post_types ? $post_types : ['page'];
+    }
+
+    /**
+     * Get content post types as value/label pairs for admin dropdowns.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public static function get_content_post_type_options(): array {
+        $options = [];
+
+        foreach (self::get_content_post_types() as $post_type) {
+            $post_type_object = get_post_type_object($post_type);
+            $label = isset($post_type_object->labels->singular_name) && is_scalar($post_type_object->labels->singular_name)
+                ? (string) $post_type_object->labels->singular_name
+                : '';
+
+            $options[] = [
+                'value' => $post_type,
+                'label' => sanitize_text_field($label !== '' ? $label : $post_type),
+            ];
+        }
+
+        return $options;
     }
 
     /**

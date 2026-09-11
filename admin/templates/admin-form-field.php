@@ -14,6 +14,7 @@
     $field_index = $field_object->get('index', 0);
     $field_id = $field_object->get_id();
     $field_type = $field_object->get_type();
+    $field_type_item = \ElzoForms\Admin\Field_Picker::get_item($field_type);
     $width = \ElzoForms\Utilities\Admin::get_field_header_width($field['width'] ?? null);
     $admin_label = $field_object->get_admin_label();
     $label = $field_object->get_label();
@@ -33,7 +34,7 @@
     <div class="elzo-forms-field-header">
         <div class="elzo-forms-sortable-dragger elzo-forms-field-header-dragger"></div>
         <strong class="elzo-forms-field-header-title">
-            <span class="elzo-forms-field-header-title-inner"><?php echo esc_html($field_index . '. ' . \ElzoForms\Utilities\Admin::get_field_types($field_type, 'label') . ($title ? ': ' . $title : '')); ?></span><?php echo $width ? esc_html(' (' . $width . ')') : ''; ?><?php echo !empty($field['logic']) ? esc_html(' [?=]') : ''; ?><?php echo $required ? esc_html(' *') : ''; ?>
+            <span class="elzo-forms-field-header-title-inner"><?php echo esc_html($field_index . '. ' . $field_type_item['label'] . ($title ? ': ' . $title : '')); ?></span><?php echo $width ? esc_html(' (' . $width . ')') : ''; ?><?php echo !empty($field['logic']) ? esc_html(' [?=]') : ''; ?><?php echo $required ? esc_html(' *') : ''; ?>
         </strong>
         <div class="elzo-forms-field-header-end">
             <button type="button" class="elzo-forms-field-header-button elzo-forms-field-duplicate-button"><i class="elzo-icon elzo-icon-copy"></i></button>

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "elzo-forms/form",
+  "title": "Elzo Form",
+  "category": "widgets",
+  "icon": "feedback",
+  "description": "Display a form created with Elzo Forms.",
+  "keywords": ["form", "contact", "Elzo"],
+  "textdomain": "elzo-forms",
+  "attributes": {
+    "formId": {
+      "type": "integer",
+      "default": 0
+    },
+    "maxWidth": {
+      "type": "string",
+      "default": ""
+    },
+    "formAlign": {
+      "type": "string",
+      "enum": ["", "left", "center", "right"],
+      "default": ""
+    },
+    "textAlign": {
+      "type": "string",
+      "enum": ["", "left", "center", "right"],
+      "default": ""
+    }
+  },
+  "supports": {
+    "html": false
+  },
+  "editorScript": "elzo-forms-block-editor",
+  "style": "elzo-forms-style",
+  "editorStyle": "elzo-forms-block-editor-style"
+}

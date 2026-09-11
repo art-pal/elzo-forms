@@ -924,20 +924,846 @@ document.addEventListener('DOMContentLoaded', function() {
             keyInput.value = ElzoFormsMakeUniqueFieldKey(baseKey, usedKeys);
         });
     }
-    // Page and URL rules are typed into a plain value input; the placeholder is the
-    // only hint about the expected format. Mirrored in admin-logic-item.php so the
+
+    // -------------------------------------------------------------------------
+    // Content picker
+    //
+    // Searchable selector for content that a condition references by ID, used by
+    // page conditions in field logic and in automations. The value control it
+    // wraps stays the single source of truth: the picker only reads the IDs
+    // stored there and writes back the ones a user picks, so a cloned rule and a
+    // reloaded form both rebuild from stored data alone.
+    // -------------------------------------------------------------------------
+
+    let ElzoFormsContentPickerSequence = 0;
+
+    // Titles resolved so far, keyed by post ID. Lets a picker label a stored ID
+    // without a request when another picker already looked it up.
+    const ElzoFormsContentLabelCache = {};
+
+    function ElzoFormsContentPickerText(key, fallback) {
+        const strings = window.ElzoFormsAdmin && window.ElzoFormsAdmin.contentPicker
+            ? window.ElzoFormsAdmin.contentPicker
+            : {};
+        const message = strings && typeof strings[key] === 'string' ? strings[key] : '';
+
+        return message || fallback || '';
+    }
+
+    function ElzoFormsContentPickerFormat(key, fallback, value) {
+        return ElzoFormsContentPickerText(key, fallback).replace('%d', String(value)).replace('%s', String(value));
+    }
+
+    function ElzoFormsContentPostTypeOptions() {
+        const options = window.ElzoFormsAdmin && window.ElzoFormsAdmin.contentPostTypes;
+
+        return Array.isArray(options) ? options : [];
+    }
+
+    function ElzoFormsPostTypeLabel(value) {
+        const match = ElzoFormsContentPostTypeOptions().find(option => String(option.value || '') === String(value));
+
+        return match ? String(match.label || match.value || '') : '';
+    }
+
+    function ElzoFormsPostTypeSearch(params, callback) {
+        const query = String(params.search || '').trim().toLowerCase();
+        const limit = Math.max(1, parseInt(params.limit || 20, 10) || 20);
+        const page = Math.max(1, parseInt(params.page || 1, 10) || 1);
+        const matches = ElzoFormsContentPostTypeOptions().filter(option => {
+            const value = String(option.value || '');
+            const label = String(option.label || value);
+
+            return value && (!query || value.toLowerCase().includes(query) || label.toLowerCase().includes(query));
+        });
+        const offset = (page - 1) * limit;
+        const items = matches.slice(offset, offset + limit).map(option => ({
+            id: String(option.value || ''),
+            title: String(option.label || option.value || ''),
+        }));
+
+        callback(items, '', offset + limit < matches.length);
+    }
+
+    function ElzoFormsReadIntegerArray(value) {
+        let values = [];
+
+        try {
+            const parsed = JSON.parse(value || '[]');
+            if (Array.isArray(parsed)) {
+                values = parsed;
+            } else if (parsed !== null && typeof parsed !== 'undefined') {
+                values = [parsed];
+            }
+        } catch (error) {
+            values = String(value || '').split(/[,\s]+/);
+        }
+
+        const seen = {};
+        return values.map(item => String(item).trim())
+            .filter(item => /^[+-]?\d+$/.test(item))
+            .map(item => parseInt(item, 10))
+            .filter(item => {
+                if (seen[item]) return false;
+                seen[item] = true;
+                return true;
+            });
+    }
+
+    function ElzoFormsReadPostTypeArray(value) {
+        const seen = {};
+
+        return String(value || '').split(/[,\s]+/)
+            .map(item => item.trim().toLowerCase().replace(/[^a-z0-9_-]/g, ''))
+            .filter(item => {
+                if (!item || !/^[a-z_][a-z0-9_-]*$/.test(item) || seen[item]) return false;
+                seen[item] = true;
+                return true;
+            });
+    }
+
+    function ElzoFormsContentSearch(params, callback) {
+        const admin = window.ElzoFormsAdmin || {};
+
+        if (!admin.ajaxurl || !admin.nonce || typeof fetch !== 'function') {
+            callback([], ElzoFormsContentPickerText('failed', 'Search failed.'));
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'elzo_forms_content_search');
+        formData.append('nonce', admin.nonce);
+        formData.append('limit', String(params.limit || 20));
+        formData.append('page', String(params.page || 1));
+
+        if (params.search) formData.append('search', params.search);
+        if (params.include && params.include.length) formData.append('include', params.include.join(','));
+        if (params.postTypes && params.postTypes.length) formData.append('post_types', params.postTypes.join(','));
+
+        fetch(admin.ajaxurl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData,
+        }).then(response => response.json())
+            .then(data => {
+                if (data && data.success && data.data && Array.isArray(data.data.items)) {
+                    data.data.items.forEach(item => {
+                        const id = parseInt(item.id, 10);
+                        if (id > 0) ElzoFormsContentLabelCache[id] = item;
+                    });
+                    callback(data.data.items, '', data.data.has_more === true);
+                    return;
+                }
+
+                const message = data && data.data && data.data.message
+                    ? data.data.message
+                    : ElzoFormsContentPickerText('failed', 'Search failed.');
+                callback([], message, false);
+            })
+            .catch(() => {
+                callback([], ElzoFormsContentPickerText('failed', 'Search failed.'), false);
+            });
+    }
+
+    function ElzoFormsContentPickerLabel(picker, id) {
+        const settings = ElzoFormsContentPickerSettings(picker);
+        if (settings.label) return settings.label(id);
+
+        const item = ElzoFormsContentLabelCache[id];
+        if (!item) return '';
+
+        return item.type_label ? item.title + ' (' + item.type_label + ')' : item.title;
+    }
+
+    function ElzoFormsContentPickerSettings(picker) {
+        const runtime = picker.elzoContentPickerOptions || {};
+
+        return {
+            multiple: picker.getAttribute('data-multiple') === '1',
+            format: picker.getAttribute('data-format') === 'json' ? 'json' : 'csv',
+            valueType: picker.getAttribute('data-value-type') === 'string' ? 'string' : 'integer',
+            postTypes: (picker.getAttribute('data-post-types') || '').split(',').filter(Boolean),
+            limit: Math.max(1, parseInt(runtime.limit || 20, 10) || 20),
+            minSearchLength: Math.max(0, parseInt(runtime.minSearchLength ?? 2, 10) || 0),
+            search: typeof runtime.search === 'function' ? runtime.search : ElzoFormsContentSearch,
+            label: typeof runtime.label === 'function' ? runtime.label : null,
+            unavailableLabel: typeof runtime.unavailableLabel === 'function' ? runtime.unavailableLabel : null,
+            meta: typeof runtime.meta === 'function' ? runtime.meta : null,
+        };
+    }
+
+    function ElzoFormsContentPickerNormalizeValue(picker, value) {
+        if (ElzoFormsContentPickerSettings(picker).valueType === 'string') {
+            return ElzoFormsReadPostTypeArray(value)[0] || '';
+        }
+
+        return parseInt(value, 10) || 0;
+    }
+
+    function ElzoFormsContentPickerValueControl(picker) {
+        const selector = picker.getAttribute('data-value-selector') || '';
+
+        return selector ? picker.parentElement.querySelector(selector) : null;
+    }
+
+    function ElzoFormsContentPickerReadIds(picker) {
+        const valueControl = ElzoFormsContentPickerValueControl(picker);
+
+        if (!valueControl) return [];
+
+        return ElzoFormsContentPickerSettings(picker).valueType === 'string'
+            ? ElzoFormsReadPostTypeArray(valueControl.value)
+            : ElzoFormsReadIntegerArray(valueControl.value);
+    }
+
+    function ElzoFormsContentPickerWriteIds(picker, ids) {
+        const valueControl = ElzoFormsContentPickerValueControl(picker);
+        if (!valueControl) return;
+
+        const settings = ElzoFormsContentPickerSettings(picker);
+        const value = settings.format === 'json'
+            ? (settings.multiple ? JSON.stringify(ids) : (ids.length ? String(ids[0]) : ''))
+            : ids.join(', ');
+
+        valueControl.value = value;
+        valueControl.dispatchEvent(new Event('input', { bubbles: true }));
+        valueControl.dispatchEvent(new Event('change', { bubbles: true }));
+
+        ElzoFormsRenderContentPickerSelection(picker);
+    }
+
+    function ElzoFormsSyncContentPickerPresentation(picker) {
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        const hasSelection = ElzoFormsContentPickerReadIds(picker).length > 0;
+        const searchLabel = ElzoFormsContentPickerText('searchPlaceholder', 'Search by title');
+
+        picker.classList.toggle('has-selection', hasSelection);
+        picker.classList.toggle('has-query', !!(search && search.value.trim()));
+
+        if (search) {
+            search.setAttribute('placeholder', hasSelection ? '' : searchLabel);
+            search.setAttribute('aria-label', searchLabel);
+        }
+    }
+
+    function ElzoFormsRenderContentPickerSelection(picker) {
+        const selection = picker.querySelector('.elzo-forms-content-picker-selection');
+        if (!selection) return;
+
+        const ids = ElzoFormsContentPickerReadIds(picker);
+        const unresolved = [];
+        const settings = ElzoFormsContentPickerSettings(picker);
+
+        selection.replaceChildren();
+        selection.hidden = ids.length === 0;
+
+        ids.forEach(id => {
+            const label = ElzoFormsContentPickerLabel(picker, id);
+            if (!label && settings.valueType === 'integer') unresolved.push(id);
+
+            const token = document.createElement('span');
+            token.className = 'elzo-forms-content-picker-token';
+            if (!label) token.classList.add('is-unresolved');
+
+            const text = document.createElement('span');
+            text.className = 'elzo-forms-content-picker-token-label';
+            text.textContent = label
+                || (settings.unavailableLabel
+                    ? settings.unavailableLabel(id)
+                    : ElzoFormsContentPickerFormat('unavailable', '#%d (unavailable)', id));
+            text.title = settings.valueType === 'integer' ? text.textContent + ' — ID ' + id : text.textContent;
+            token.appendChild(text);
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'elzo-forms-content-picker-token-remove';
+            remove.setAttribute('data-content-id', String(id));
+            remove.setAttribute('aria-label', ElzoFormsContentPickerText('remove', 'Remove') + ': ' + text.textContent);
+            remove.innerHTML = '<span class="elzo-icon elzo-icon-close"></span>';
+            token.appendChild(remove);
+
+            selection.appendChild(token);
+        });
+
+        ElzoFormsSyncContentPickerPresentation(picker);
+
+        if (unresolved.length) ElzoFormsResolveContentPickerLabels(picker, unresolved);
+    }
+
+    /**
+     * Look up titles for stored IDs that have never been searched for.
+     *
+     * IDs already requested are remembered on the picker so a re-render caused by
+     * an unrelated change cannot start the same request again.
+     */
+    function ElzoFormsResolveContentPickerLabels(picker, ids) {
+        const requested = (picker.dataset.resolvedIds || '').split(',').filter(Boolean);
+        const pending = ids.filter(id => requested.indexOf(String(id)) === -1);
+        if (!pending.length) return;
+
+        picker.dataset.resolvedIds = requested.concat(pending.map(String)).join(',');
+
+        const settings = ElzoFormsContentPickerSettings(picker);
+        settings.search({ include: pending, postTypes: settings.postTypes, limit: pending.length, page: 1 }, items => {
+            if (!items.length || !picker.isConnected) return;
+            ElzoFormsRenderContentPickerSelection(picker);
+        });
+    }
+
+    function ElzoFormsRenderContentPickerResults(picker, items, append) {
+        const results = picker.querySelector('.elzo-forms-content-picker-results');
+        if (!results) return;
+
+        const selected = ElzoFormsContentPickerReadIds(picker);
+        const settings = ElzoFormsContentPickerSettings(picker);
+        const rendered = {};
+
+        if (!append) results.replaceChildren();
+        results.querySelectorAll('.elzo-forms-content-picker-result').forEach(option => {
+            const value = ElzoFormsContentPickerNormalizeValue(picker, option.getAttribute('data-content-id'));
+            rendered[value] = true;
+            option.setAttribute('aria-selected', selected.indexOf(value) !== -1 ? 'true' : 'false');
+        });
+
+        items.forEach(item => {
+            const id = ElzoFormsContentPickerNormalizeValue(picker, item.id);
+            if (!id || rendered[id]) return;
+            rendered[id] = true;
+
+            const option = document.createElement('li');
+            option.className = 'elzo-forms-content-picker-result';
+            option.id = results.id + '-option-' + id;
+            option.setAttribute('role', 'option');
+            option.setAttribute('data-content-id', String(id));
+            option.setAttribute('aria-selected', selected.indexOf(id) !== -1 ? 'true' : 'false');
+
+            const title = document.createElement('span');
+            title.className = 'elzo-forms-content-picker-result-title';
+            title.textContent = item.title;
+            option.appendChild(title);
+
+            const metaText = settings.meta
+                ? settings.meta(item, id)
+                : (item.type_label || item.type || '') + ' · ' + id;
+            if (metaText) {
+                const meta = document.createElement('span');
+                meta.className = 'elzo-forms-content-picker-result-meta';
+                meta.textContent = metaText;
+                option.appendChild(meta);
+            }
+
+            results.appendChild(option);
+        });
+
+        ElzoFormsToggleContentPickerResults(picker, results.children.length > 0);
+    }
+
+    function ElzoFormsToggleContentPickerResults(picker, open) {
+        const results = picker.querySelector('.elzo-forms-content-picker-results');
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        if (!results || !search) return;
+
+        results.hidden = !open;
+        search.setAttribute('aria-expanded', open ? 'true' : 'false');
+        picker.classList.toggle('is-open', open);
+
+        if (!open) {
+            search.removeAttribute('aria-activedescendant');
+            results.querySelectorAll('.is-active').forEach(option => option.classList.remove('is-active'));
+        }
+    }
+
+    function ElzoFormsMoveContentPickerActive(picker, step) {
+        const results = picker.querySelector('.elzo-forms-content-picker-results');
+        if (!results || results.hidden) return;
+
+        const options = Array.from(results.querySelectorAll('.elzo-forms-content-picker-result'));
+        if (!options.length) return;
+
+        const currentIndex = options.findIndex(option => option.classList.contains('is-active'));
+        const nextIndex = (currentIndex + step + options.length) % options.length;
+
+        options.forEach(option => option.classList.remove('is-active'));
+        options[nextIndex].classList.add('is-active');
+        options[nextIndex].scrollIntoView({ block: 'nearest' });
+
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        if (search) search.setAttribute('aria-activedescendant', options[nextIndex].id);
+    }
+
+    function ElzoFormsSelectContentPickerOption(picker, id) {
+        if (!id) return;
+
+        const settings = ElzoFormsContentPickerSettings(picker);
+        const ids = ElzoFormsContentPickerReadIds(picker);
+
+        if (settings.multiple) {
+            if (ids.indexOf(id) === -1) ids.push(id);
+            ElzoFormsContentPickerWriteIds(picker, ids);
+        } else {
+            ElzoFormsContentPickerWriteIds(picker, [id]);
+        }
+
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        const status = picker.querySelector('.elzo-forms-content-picker-status');
+
+        if (search) {
+            search.value = '';
+            ElzoFormsSyncContentPickerPresentation(picker);
+            if (settings.multiple) {
+                const alreadyFocused = document.activeElement === search;
+                search.focus();
+                if (alreadyFocused) ElzoFormsRunContentPickerSearch(picker, true);
+            }
+        }
+        if (status) status.textContent = '';
+
+        if (!settings.multiple) ElzoFormsToggleContentPickerResults(picker, false);
+    }
+
+    function ElzoFormsLoadContentPickerPage(picker, query, page, append) {
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        const status = picker.querySelector('.elzo-forms-content-picker-status');
+        if (!search) return;
+
+        const sequence = (picker.elzoSearchSequence || 0) + 1;
+        picker.elzoSearchSequence = sequence;
+        picker.elzoSearchLoading = true;
+        picker.setAttribute('aria-busy', 'true');
+
+        if (status) status.textContent = ElzoFormsContentPickerText('loading', 'Searching...');
+
+        const settings = ElzoFormsContentPickerSettings(picker);
+        settings.search({ search: query, postTypes: settings.postTypes, limit: settings.limit, page: page }, (items, error, hasMore) => {
+            if (picker.elzoSearchSequence !== sequence || !picker.isConnected) return;
+
+            picker.elzoSearchLoading = false;
+            picker.removeAttribute('aria-busy');
+            picker.elzoSearchQuery = query;
+            picker.elzoSearchPage = page;
+            picker.elzoSearchHasMore = hasMore;
+
+            ElzoFormsRenderContentPickerResults(picker, items, append);
+            if (status) status.textContent = error || (!append && !items.length ? ElzoFormsContentPickerText('noResults', 'Nothing found.') : '');
+
+            const results = picker.querySelector('.elzo-forms-content-picker-results');
+            if (hasMore && results && results.scrollHeight - results.clientHeight <= 48) {
+                window.setTimeout(() => {
+                    if (picker.elzoSearchSequence === sequence) ElzoFormsLoadMoreContentPickerResults(picker);
+                }, 0);
+            }
+        });
+    }
+
+    function ElzoFormsRunContentPickerSearch(picker, immediate) {
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        const status = picker.querySelector('.elzo-forms-content-picker-status');
+        if (!search) return;
+
+        const query = search.value.trim();
+        const settings = ElzoFormsContentPickerSettings(picker);
+
+        window.clearTimeout(picker.elzoSearchTimer);
+
+        if (query.length > 0 && query.length < settings.minSearchLength) {
+            picker.elzoSearchSequence = (picker.elzoSearchSequence || 0) + 1;
+            picker.elzoSearchLoading = false;
+            picker.removeAttribute('aria-busy');
+            ElzoFormsToggleContentPickerResults(picker, false);
+            if (status) status.textContent = ElzoFormsContentPickerText('searchHint', 'Type at least 2 characters to search.');
+            return;
+        }
+
+        const load = () => ElzoFormsLoadContentPickerPage(picker, query, 1, false);
+        if (immediate) load();
+        else picker.elzoSearchTimer = window.setTimeout(load, 250);
+    }
+
+    function ElzoFormsLoadMoreContentPickerResults(picker) {
+        if (!picker || picker.elzoSearchLoading || !picker.elzoSearchHasMore) return;
+
+        ElzoFormsLoadContentPickerPage(
+            picker,
+            picker.elzoSearchQuery || '',
+            (picker.elzoSearchPage || 1) + 1,
+            true
+        );
+    }
+
+    /**
+     * Build or refresh a content picker inside a wrapper.
+     *
+     * Safe to call repeatedly on the same wrapper: existing markup is reused and
+     * only the parts driven by the stored value are rebuilt, so a picker keeps
+     * focus and typed text across the refreshes a condition editor triggers.
+     *
+     * @param {HTMLElement} wrapper Element the picker lives in, next to the value control.
+     * @param {Object} options Picker options: valueSelector, multiple, format, valueType, postTypes.
+     */
+    function ElzoFormsMountContentPicker(wrapper, options = {}) {
+        if (!wrapper) return null;
+
+        let picker = wrapper.querySelector('.elzo-forms-content-picker');
+
+        if (!picker) {
+            ElzoFormsContentPickerSequence += 1;
+
+            picker = document.createElement('div');
+            picker.className = 'elzo-forms-content-picker';
+
+            const control = document.createElement('div');
+            control.className = 'elzo-forms-field-control elzo-forms-content-picker-control';
+            picker.appendChild(control);
+
+            const selection = document.createElement('div');
+            selection.className = 'elzo-forms-content-picker-selection';
+            control.appendChild(selection);
+
+            const search = document.createElement('input');
+            search.type = 'search';
+            search.autocomplete = 'off';
+            search.className = 'elzo-forms-content-picker-search';
+            search.setAttribute('role', 'combobox');
+            search.setAttribute('aria-autocomplete', 'list');
+            search.setAttribute('aria-expanded', 'false');
+            search.setAttribute('aria-controls', 'elzo-forms-content-picker-results-' + ElzoFormsContentPickerSequence);
+            control.appendChild(search);
+
+            const results = document.createElement('ul');
+            results.className = 'elzo-forms-content-picker-results';
+            results.id = 'elzo-forms-content-picker-results-' + ElzoFormsContentPickerSequence;
+            results.setAttribute('role', 'listbox');
+            results.hidden = true;
+            picker.appendChild(results);
+
+            const status = document.createElement('p');
+            status.className = 'screen-reader-text elzo-forms-content-picker-status';
+            status.setAttribute('aria-live', 'polite');
+            picker.appendChild(status);
+
+            wrapper.appendChild(picker);
+        }
+
+        // A cloned rule arrives carrying the original's element ids; the first
+        // element to claim an id keeps it and the clone takes a fresh one.
+        const results = picker.querySelector('.elzo-forms-content-picker-results');
+        const search = picker.querySelector('.elzo-forms-content-picker-search');
+        if (results && (!results.id || document.getElementById(results.id) !== results)) {
+            ElzoFormsContentPickerSequence += 1;
+            results.id = 'elzo-forms-content-picker-results-' + ElzoFormsContentPickerSequence;
+
+            // cloneNode() copies data attributes but not the in-flight request
+            // that data-resolved-ids describes. Let a cloned picker resolve any
+            // uncached selected IDs for itself instead of leaving stale labels.
+            picker.removeAttribute('data-resolved-ids');
+        }
+        if (results && search) search.setAttribute('aria-controls', results.id);
+
+        // Results belong to the query that produced them, never to a clone.
+        if (results) results.replaceChildren();
+
+        picker.setAttribute('data-multiple', options.multiple ? '1' : '0');
+        picker.setAttribute('data-format', options.format === 'json' ? 'json' : 'csv');
+        picker.setAttribute('data-value-type', options.valueType === 'string' ? 'string' : 'integer');
+        picker.setAttribute('data-post-types', (options.postTypes || []).join(','));
+        picker.setAttribute('data-value-selector', options.valueSelector);
+        picker.elzoContentPickerOptions = {
+            search: typeof options.search === 'function' ? options.search : ElzoFormsContentSearch,
+            limit: options.limit || 20,
+            minSearchLength: options.minSearchLength ?? 2,
+            label: typeof options.label === 'function' ? options.label : null,
+            unavailableLabel: typeof options.unavailableLabel === 'function' ? options.unavailableLabel : null,
+            meta: typeof options.meta === 'function' ? options.meta : null,
+        };
+
+        ElzoFormsToggleContentPickerResults(picker, false);
+        ElzoFormsRenderContentPickerSelection(picker);
+
+        return picker;
+    }
+
+    function ElzoFormsRemoveContentPicker(wrapper) {
+        const picker = wrapper ? wrapper.querySelector('.elzo-forms-content-picker') : null;
+        if (picker) picker.remove();
+    }
+
+    /**
+     * Reusable admin content picker API.
+     *
+     * A caller owns the hidden value control and supplies a search adapter with
+     * the same callback contract as the built-in WordPress content endpoint.
+     * This keeps the UI reusable for future admin content selectors while
+     * conditional logic remains only one consumer of it today.
+     */
+    const ElzoFormsAdminContentPicker = Object.freeze({
+        mount: ElzoFormsMountContentPicker,
+        unmount: ElzoFormsRemoveContentPicker,
+        refresh(target) {
+            const picker = target && target.classList && target.classList.contains('elzo-forms-content-picker')
+                ? target
+                : (target ? target.querySelector('.elzo-forms-content-picker') : null);
+            if (picker) ElzoFormsRenderContentPickerSelection(picker);
+            return picker;
+        },
+    });
+
+    window.ElzoFormsAdminContentPicker = ElzoFormsAdminContentPicker;
+
+    document.addEventListener('input', function(e) {
+        if (e.target.classList.contains('elzo-forms-content-picker-search')) {
+            const picker = e.target.closest('.elzo-forms-content-picker');
+            if (picker) {
+                ElzoFormsSyncContentPickerPresentation(picker);
+                ElzoFormsRunContentPickerSearch(picker);
+            }
+        }
+    });
+
+    document.addEventListener('focusin', function(e) {
+        if (!e.target.classList || !e.target.classList.contains('elzo-forms-content-picker-search')) return;
+
+        const picker = e.target.closest('.elzo-forms-content-picker');
+        if (picker) ElzoFormsRunContentPickerSearch(picker, true);
+    });
+
+    document.addEventListener('scroll', function(e) {
+        const results = e.target && e.target.classList && e.target.classList.contains('elzo-forms-content-picker-results')
+            ? e.target
+            : null;
+        if (!results || results.hidden || results.scrollHeight - results.scrollTop - results.clientHeight > 48) return;
+
+        ElzoFormsLoadMoreContentPickerResults(results.closest('.elzo-forms-content-picker'));
+    }, true);
+
+    document.addEventListener('keydown', function(e) {
+        if (!e.target.classList || !e.target.classList.contains('elzo-forms-content-picker-search')) return;
+
+        const picker = e.target.closest('.elzo-forms-content-picker');
+        if (!picker) return;
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            ElzoFormsMoveContentPickerActive(picker, e.key === 'ArrowDown' ? 1 : -1);
+            return;
+        }
+
+        if (e.key === 'Enter') {
+            const active = picker.querySelector('.elzo-forms-content-picker-result.is-active');
+            // Enter with no highlighted result must not submit the form editor.
+            e.preventDefault();
+            if (active) ElzoFormsSelectContentPickerOption(picker, ElzoFormsContentPickerNormalizeValue(picker, active.getAttribute('data-content-id')));
+            return;
+        }
+
+        if (e.key === 'Backspace' && e.target.value === '') {
+            const ids = ElzoFormsContentPickerReadIds(picker);
+            if (ids.length) {
+                ids.pop();
+                ElzoFormsContentPickerWriteIds(picker, ids);
+            }
+            return;
+        }
+
+        if (e.key === 'Escape') {
+            ElzoFormsToggleContentPickerResults(picker, false);
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        const option = e.target.closest ? e.target.closest('.elzo-forms-content-picker-result') : null;
+        if (option) {
+            const picker = option.closest('.elzo-forms-content-picker');
+            if (picker) {
+                e.preventDefault();
+                ElzoFormsSelectContentPickerOption(picker, ElzoFormsContentPickerNormalizeValue(picker, option.getAttribute('data-content-id')));
+            }
+            return;
+        }
+
+        const remove = e.target.closest ? e.target.closest('.elzo-forms-content-picker-token-remove') : null;
+        if (remove) {
+            const picker = remove.closest('.elzo-forms-content-picker');
+            if (picker) {
+                e.preventDefault();
+                const removedId = ElzoFormsContentPickerNormalizeValue(picker, remove.getAttribute('data-content-id'));
+                ElzoFormsContentPickerWriteIds(picker, ElzoFormsContentPickerReadIds(picker).filter(id => id !== removedId));
+            }
+            return;
+        }
+
+        const control = e.target.closest ? e.target.closest('.elzo-forms-content-picker-control') : null;
+        if (control) {
+            const search = control.querySelector('.elzo-forms-content-picker-search');
+            if (search) search.focus();
+            return;
+        }
+
+        document.querySelectorAll('.elzo-forms-content-picker').forEach(picker => {
+            if (!picker.contains(e.target)) ElzoFormsToggleContentPickerResults(picker, false);
+        });
+    });
+    // URL rules are typed into a plain value input; the placeholder is the only
+    // hint about the expected format. Mirrored in admin-logic-item.php so the
     // hint is present before the first change event.
-    function ElzoFormsLogicValuePlaceholder(type, operator) {
-        if (type === 'page') return String(operator).startsWith('post_type_') ? 'page, post' : '12, 15';
+    function ElzoFormsLogicValuePlaceholder(type) {
         if (type === 'url') return 'https://example.com/pricing/';
 
         return '';
     }
 
     /**
+     * Turn a condition value control into a select, keeping its name and value.
+     */
+    function ElzoFormsEnsureLogicValueSelect(rule) {
+        const currentValueField = ElzoFormsGetLogicRuleValueField(rule);
+        if (!currentValueField) return null;
+
+        if (currentValueField.tagName === 'SELECT') {
+            currentValueField.hidden = false;
+            return currentValueField;
+        }
+
+        const replacementField = document.createElement('select');
+        replacementField.className = 'elzo-forms-field-control elzo-forms-field-logic-group-rule-value-select';
+
+        const fieldName = currentValueField.getAttribute('name');
+        if (fieldName) replacementField.setAttribute('name', fieldName);
+
+        currentValueField.replaceWith(replacementField);
+
+        return replacementField;
+    }
+
+    /**
+     * Offer the registered post types instead of a hand-typed slug.
+     */
+    function ElzoFormsApplyLogicPostTypeSelect(rule, multiple) {
+        const valueWrapper = rule.querySelector('.elzo-forms-field-logic-group-rule-value');
+
+        if (multiple) {
+            const valueInput = ElzoFormsEnsureLogicValueInput(rule, 'text');
+            if (!valueWrapper || !valueInput) return;
+
+            const postTypes = ElzoFormsReadPostTypeArray(valueInput.value);
+            valueInput.value = postTypes.join(', ');
+            valueInput.hidden = true;
+            valueInput.readOnly = false;
+
+            ElzoFormsAdminContentPicker.mount(valueWrapper, {
+                valueSelector: '.elzo-forms-field-logic-group-rule-value-input',
+                multiple: true,
+                format: 'csv',
+                valueType: 'string',
+                search: ElzoFormsPostTypeSearch,
+                minSearchLength: 0,
+                label: ElzoFormsPostTypeLabel,
+                unavailableLabel(value) {
+                    return ElzoFormsContentPickerFormat('postTypeUnavailable', '%s (unavailable)', value);
+                },
+                meta(item, value) {
+                    return value;
+                },
+            });
+            return;
+        }
+
+        ElzoFormsAdminContentPicker.unmount(valueWrapper);
+
+        const currentValueField = ElzoFormsGetLogicRuleValueField(rule);
+        const storedValue = currentValueField ? String(currentValueField.value || '') : '';
+        // Switching over from a page ID operator leaves IDs behind, which are not slugs.
+        const currentValue = ElzoFormsReadPostTypeArray(storedValue)[0] || '';
+        const select = ElzoFormsEnsureLogicValueSelect(rule);
+        if (!select) return;
+
+        select.replaceChildren();
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = ElzoFormsContentPickerText('selectPostType', 'Select a post type');
+        select.appendChild(placeholder);
+
+        let matched = false;
+
+        ElzoFormsContentPostTypeOptions().forEach(function(postType) {
+            const value = String(postType.value || '');
+            if (!value) return;
+
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = postType.label || value;
+            if (value === currentValue) matched = true;
+            select.appendChild(option);
+        });
+
+        // A slug stored before its post type was unregistered stays selectable, so
+        // re-saving the form cannot silently drop the condition.
+        if (currentValue !== '' && !matched) {
+            const option = document.createElement('option');
+            option.value = currentValue;
+            option.textContent = ElzoFormsContentPickerFormat('postTypeUnavailable', '%s (unavailable)', currentValue);
+            select.appendChild(option);
+        }
+
+        select.value = currentValue;
+    }
+
+    /**
+     * Replace the ID input with a searchable picker over the site's content.
+     */
+    function ElzoFormsApplyLogicPagePicker(rule, multiple) {
+        const valueWrapper = rule.querySelector('.elzo-forms-field-logic-group-rule-value');
+        const valueInput = ElzoFormsEnsureLogicValueInput(rule, 'text');
+        if (!valueWrapper || !valueInput) return;
+
+        valueInput.readOnly = false;
+        valueInput.removeAttribute('placeholder');
+        valueInput.removeAttribute('step');
+        valueInput.hidden = true;
+
+        // Single-page operators compare against one ID, and a post type slug left
+        // behind by another operator is not an ID at all: keep only what the
+        // current operator can actually use.
+        const ids = ElzoFormsReadIntegerArray(valueInput.value);
+        const normalizedValue = (multiple ? ids : ids.slice(0, 1)).join(', ');
+        if (valueInput.value !== normalizedValue) valueInput.value = normalizedValue;
+
+        ElzoFormsAdminContentPicker.mount(valueWrapper, {
+            valueSelector: '.elzo-forms-field-logic-group-rule-value-input',
+            multiple: multiple,
+            format: 'csv',
+            postTypes: [],
+        });
+    }
+
+    function ElzoFormsApplyLogicPageValueControl(rule, operator) {
+        if (String(operator).startsWith('post_type_')) {
+            ElzoFormsApplyLogicPostTypeSelect(rule, operator === 'post_type_in' || operator === 'post_type_not_in');
+            return;
+        }
+
+        ElzoFormsApplyLogicPagePicker(rule, operator === 'page_id_in' || operator === 'page_id_not_in');
+    }
+
+    /**
      * Refresh UI of a single field-visibility condition item after type or operator changes.
      * Mirrors ElzoFormsRefreshAutomationConditionItem but for .elzo-forms-field-logic-condition-item elements.
      */
+    function ElzoFormsSyncConditionTypeButton(item, type) {
+        const button = item.querySelector('.elzo-forms-condition-type-button');
+        if (!button) return;
+
+        const option = ElzoFormsConditionTypePicker.options.find(candidate => candidate.type === type);
+        if (!option) return; // Preserve PHP's defensive fallback for unknown saved types.
+
+        const label = button.querySelector('.elzo-forms-condition-type-button-label');
+        if (label) label.textContent = option.labelText;
+
+        const oldIcon = button.querySelector('.elzo-forms-field-type-icon');
+        const optionIcon = option.element.querySelector('.elzo-forms-field-type-icon');
+        if (oldIcon && optionIcon) oldIcon.replaceWith(optionIcon.cloneNode(true));
+    }
+
     function ElzoFormsRefreshFieldLogicItem(item) {
         if (!item) return;
 
@@ -945,6 +1771,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!typeSelect) return;
 
         const type           = typeSelect.value;
+        ElzoFormsSyncConditionTypeButton(item, type);
         const operatorsMap   = JSON.parse(item.getAttribute('data-operators-map')   || '{}');
         const operatorLabels = JSON.parse(item.getAttribute('data-operator-labels') || '{}');
         const operatorSelect = item.querySelector('.elzo-forms-field-logic-condition-operator-select');
@@ -979,13 +1806,18 @@ document.addEventListener('DOMContentLoaded', function() {
             valueWrapper.style.display = hideValue ? 'none' : '';
         }
 
-        if (type !== 'field') {
+        if (type === 'page') {
+            ElzoFormsApplyLogicPageValueControl(item, operatorSelect ? operatorSelect.value : '');
+        } else if (type !== 'field') {
+            ElzoFormsAdminContentPicker.unmount(item.querySelector('.elzo-forms-field-logic-group-rule-value'));
+
             const valueInput = ElzoFormsEnsureLogicValueInput(item, type === 'date_time' ? 'datetime-local' : 'text');
             if (valueInput) {
+                valueInput.hidden = false;
                 valueInput.readOnly = false;
                 valueInput.removeAttribute('placeholder');
 
-                const valuePlaceholder = ElzoFormsLogicValuePlaceholder(type, operatorSelect ? operatorSelect.value : '');
+                const valuePlaceholder = ElzoFormsLogicValuePlaceholder(type);
                 if (valuePlaceholder) valueInput.setAttribute('placeholder', valuePlaceholder);
 
                 if (type !== 'date_time') {
@@ -998,8 +1830,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
         item.setAttribute('data-condition-type', type);
 
+        // Settings of a rule whose type is not registered right now are only
+        // posted back, and its notice only shown, while the rule keeps that type.
+        item.querySelectorAll('.elzo-forms-field-logic-stored-setting').forEach(function(input) {
+            input.disabled = input.getAttribute('data-stored-type') !== type;
+        });
+        item.querySelectorAll('.elzo-forms-field-logic-unavailable-notice').forEach(function(notice) {
+            notice.hidden = notice.getAttribute('data-stored-type') !== type;
+        });
+
         // When type=field, also rebuild value input and operators from selected field
         if (type === 'field') {
+            ElzoFormsAdminContentPicker.unmount(item.querySelector('.elzo-forms-field-logic-group-rule-value'));
             ElzoFormsRefreshLogicRule(item);
         }
     }
@@ -1008,8 +1850,25 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.elzo-forms-field-logic-condition-item').forEach(ElzoFormsRefreshFieldLogicItem);
     }
 
+    function ElzoFormsReadFieldLogicConditionShape(item) {
+        if (!item) return null;
+
+        const typeSelect = item.querySelector('.elzo-forms-field-logic-condition-type-select');
+        const operatorSelect = item.querySelector('.elzo-forms-field-logic-condition-operator-select');
+
+        return {
+            type: typeSelect ? typeSelect.value : '',
+            operator: operatorSelect ? operatorSelect.value : '',
+        };
+    }
+
     function ElzoFormsResetClonedConditionFields(container) {
         if (!container) return;
+
+        // Stored settings belong to the saved rule they came from, not to a copy.
+        container.querySelectorAll('.elzo-forms-field-logic-stored-setting').forEach(function(input) {
+            input.remove();
+        });
 
         container.querySelectorAll('input, select, textarea').forEach(function(element) {
             if (element.tagName === 'SELECT') {
@@ -1035,6 +1894,64 @@ document.addEventListener('DOMContentLoaded', function() {
                 element.value = '';
             }
         });
+
+    }
+
+    function ElzoFormsApplyFieldLogicConditionShape(item, conditionShape) {
+        if (!item || !conditionShape) return;
+
+        const typeSelect = item.querySelector('.elzo-forms-field-logic-condition-type-select');
+        if (!typeSelect) return;
+
+        typeSelect.value = conditionShape.type || '';
+
+        // Rebuild the operator list before restoring its value. A new OR group
+        // comes from the hidden default template, whose operator options may not
+        // contain the operator used by the visible Page rule being continued.
+        ElzoFormsRefreshFieldLogicItem(item);
+
+        const operatorSelect = item.querySelector('.elzo-forms-field-logic-condition-operator-select');
+        if (operatorSelect && conditionShape.operator) {
+            operatorSelect.value = conditionShape.operator;
+        }
+
+        ElzoFormsRefreshFieldLogicItem(item);
+    }
+
+    function ElzoFormsCopyFormControlState(source, clone) {
+        if (!source || !clone) return;
+
+        const sourceControls = source.querySelectorAll('input, select, textarea');
+        const clonedControls = clone.querySelectorAll('input, select, textarea');
+
+        sourceControls.forEach(function(sourceControl, index) {
+            const clonedControl = clonedControls[index];
+            if (!clonedControl) return;
+
+            // Search text and an open result list are transient picker UI, not
+            // part of the configured condition being duplicated.
+            if (sourceControl.classList.contains('elzo-forms-content-picker-search')) {
+                clonedControl.value = '';
+                return;
+            }
+
+            if (sourceControl.type === 'checkbox' || sourceControl.type === 'radio') {
+                clonedControl.checked = sourceControl.checked;
+            } else if (sourceControl.type !== 'file') {
+                clonedControl.value = sourceControl.value;
+            }
+
+            if (sourceControl.tagName === 'SELECT') {
+                const sourceOptions = sourceControl.querySelectorAll('option');
+                const clonedOptions = clonedControl.querySelectorAll('option');
+
+                sourceOptions.forEach(function(sourceOption, optionIndex) {
+                    if (clonedOptions[optionIndex]) {
+                        clonedOptions[optionIndex].selected = sourceOption.selected;
+                    }
+                });
+            }
+        });
     }
     function ElzoFormsBuildFieldHeaderTitle(field) {
         if(typeof field === 'undefined' || !field) return;
@@ -1045,10 +1962,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const placeholder = document.getElementById('elzo-forms-field-placeholder-' + id) ? document.getElementById('elzo-forms-field-placeholder-' + id).value : '';
         const titleRaw = adminLabel ? adminLabel : (label ? label : placeholder);
         const title = titleRaw != '' ? ': ' + titleRaw : '';
-        const typeSelect = document.getElementById('elzo-forms-field-type-' + id);
-        if (!typeSelect) return;
-        const type = typeSelect.value;
-        const typeLabel = typeSelect.querySelector('option[value="' + type + '"]')?.textContent || type;
+        const typeInput = document.getElementById('elzo-forms-field-type-' + id);
+        if (!typeInput) return;
+        // The Type control shows the type's picker name ("Email", "File Upload").
+        const typeLabel = field.querySelector('.elzo-forms-field-type-button-label')?.textContent.trim() || typeInput.value;
         const required = document.getElementById('elzo-forms-field-required-' + id)?.checked ? ' *' : '';
         // Full width is the default, so "1/1" tells nothing: show the first width that narrows the field
         const fieldWidths = Array.from(field.querySelectorAll('.elzo-forms-width-subfield')).map(input => input.value ? input.value.trim() : '').filter(value => value !== '' && value !== '1/1');
@@ -1190,6 +2107,9 @@ document.addEventListener('DOMContentLoaded', function() {
             options: fieldOptions,
             logicValueSource: logicValueSource,
             logicOperators: logicOperators,
+            logicValuePlaceholder: fieldData && fieldData.logic_value_placeholder
+                ? String(fieldData.logic_value_placeholder)
+                : '',
         };
     }
 
@@ -1226,6 +2146,17 @@ document.addEventListener('DOMContentLoaded', function() {
         return replacementField;
     }
 
+    /**
+     * Whether an operator compares a number of values rather than a value.
+     */
+    function ElzoFormsIsLogicCountOperator(operator) {
+        const countOperators = Array.isArray(window.ElzoFormsAdmin?.logicCountOperators)
+            ? window.ElzoFormsAdmin.logicCountOperators
+            : [];
+
+        return countOperators.includes(operator);
+    }
+
     function ElzoFormsBuildLogicValueInput(rule) {
         if (!rule) return;
 
@@ -1242,6 +2173,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectedOption = fieldSelect.options[fieldSelect.selectedIndex];
         const rawFieldOptions = selectedOption ? selectedOption.getAttribute('data-field-options') : '[]';
         const logicValueSource = selectedOption ? selectedOption.getAttribute('data-logic-value-source') : 'text';
+        const logicValuePlaceholder = selectedOption ? (selectedOption.getAttribute('data-logic-value-placeholder') || '') : '';
         const currentValue = currentValueField.value;
         const fieldName = currentValueField.getAttribute('name');
         const selectOperators = ['==', '!='];
@@ -1253,7 +2185,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error parsing logic field options:', error);
         }
 
-        const shouldUseSelect = logicValueSource === 'options' && selectOperators.includes(operatorSelect.value) && fieldOptions.length > 0;
+        const isCountOperator = ElzoFormsIsLogicCountOperator(operatorSelect.value);
+        const shouldUseSelect = !isCountOperator
+            && logicValueSource === 'options'
+            && selectOperators.includes(operatorSelect.value)
+            && fieldOptions.length > 0;
         let replacementField;
 
         if (shouldUseSelect) {
@@ -1277,6 +2213,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 replacementField.appendChild(optionElement);
             });
+        } else if (isCountOperator) {
+            replacementField = document.createElement('input');
+            replacementField.type = 'number';
+            replacementField.min = '0';
+            replacementField.step = '1';
+            replacementField.className = 'elzo-forms-field-control elzo-forms-field-logic-group-rule-value-input';
+            replacementField.setAttribute('name', fieldName);
+            replacementField.value = /^\d+$/.test(currentValue) ? currentValue : '';
+            replacementField.placeholder = '0';
         } else {
             replacementField = document.createElement('input');
             replacementField.type = 'text';
@@ -1288,6 +2233,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 replacementField.value = '';
                 replacementField.placeholder = 'Not available for this field type';
                 replacementField.readOnly = true;
+            } else if (logicValuePlaceholder) {
+                // The field says what its value looks like; without the hint an
+                // author cannot tell what a file condition compares against.
+                replacementField.placeholder = logicValuePlaceholder;
             }
         }
 
@@ -1312,6 +2261,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (allowedOperators === null) {
             operatorSelect.innerHTML = operatorSelect.dataset.originalOptions;
+            // Without a list from the field, offer the value operators only:
+            // fields that submit several values list the count operators.
+            Array.from(operatorSelect.options).forEach(function(option) {
+                if (ElzoFormsIsLogicCountOperator(option.value)) {
+                    option.remove();
+                }
+            });
             operatorSelect.value = currentValue;
 
             if (!operatorSelect.value && operatorSelect.options.length > 0) {
@@ -1389,6 +2345,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         fieldOptions: fieldLogicData ? fieldLogicData.options : [],
                         logicValueSource: fieldLogicData ? fieldLogicData.logicValueSource : 'text',
                         logicOperators: fieldLogicData ? fieldLogicData.logicOperators : null,
+                        logicValuePlaceholder: fieldLogicData ? fieldLogicData.logicValuePlaceholder : '',
                     });
                 }
             });
@@ -1401,11 +2358,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const optionType = option.type ? String(option.type).replace(/"/g, '&quot;') : '';
                 const optionFieldOptions = JSON.stringify(option.fieldOptions || []).replace(/"/g, '&quot;');
                 const optionLogicValueSource = option.logicValueSource ? String(option.logicValueSource).replace(/"/g, '&quot;') : 'text';
+                const optionLogicValuePlaceholder = option.logicValuePlaceholder ? String(option.logicValuePlaceholder).replace(/"/g, '&quot;') : '';
                 const optionLogicOperators = JSON.stringify(option.logicOperators).replace(/"/g, '&quot;');
                 const optionTitle = option.title ? String(option.title).replace(/"/g, '&quot;') : '';
-                const optionLabelText = option.type ? (option.title || '') + ' - ' + option.type.replace(/[_-]+/g, ' ') + ' field' : (option.title || '');
+                const optionLabelText = option.type ? (option.title || '') + ' - ' + option.type.replace(/[_:-]+/g, ' ') + ' field' : (option.title || '');
                 const optionLabel = ElzoFormsTruncateLogicOptionLabel(optionLabelText);
-                optionsHTML = optionsHTML + '<option value="' + option.id + '" title="' + optionTitle + '" data-field-type="' + optionType + '" data-field-options="' + optionFieldOptions + '" data-logic-value-source="' + optionLogicValueSource + '" data-logic-operators="' + optionLogicOperators + '">' + optionLabel + '</option>';
+                optionsHTML = optionsHTML + '<option value="' + option.id + '" title="' + optionTitle + '" data-field-type="' + optionType + '" data-field-options="' + optionFieldOptions + '" data-logic-value-source="' + optionLogicValueSource + '" data-logic-value-placeholder="' + optionLogicValuePlaceholder + '" data-logic-operators="' + optionLogicOperators + '">' + optionLabel + '</option>';
             });
 
             // Get all field dropdowns
@@ -1564,6 +2522,780 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    /**
+     * Add a field at the end of a step.
+     *
+     * The field is created from the builder's field template, a Text field,
+     * and then changed to the requested type in one step.
+     *
+     * @param {HTMLElement} step Step to add the field to.
+     * @param {string} type Field type, e.g. "textarea" or "text:email"; empty keeps Text.
+     * @returns {HTMLElement|null} The new field.
+     */
+    function ElzoFormsAddField(step, type) {
+        const repeater = document.getElementById('elzo-forms-steps-repeater');
+        const stepFieldsRepeater = step ? step.querySelector('.elzo-forms-fields-repeater') : null;
+        const template = document.getElementById('elzo-forms-repeater-field-template');
+
+        if (!repeater || !stepFieldsRepeater || !template) return null;
+
+        stepFieldsRepeater.insertAdjacentHTML('beforeend', template.innerHTML);
+
+        const field = stepFieldsRepeater.lastElementChild;
+
+        ElzoFormsToggleField(field);
+        ElzoFormsUpdateRepeaterFields(repeater);
+
+        if (type) {
+            ElzoFormsChangeFieldType(field, type);
+        }
+
+        return field;
+    }
+
+    // Show a field's type in its Type control and header.
+    function ElzoFormsSetFieldType(field, type) {
+        const typeInput = document.getElementById('elzo-forms-field-type-' + field.getAttribute('data-id'));
+        if (!typeInput) return;
+
+        typeInput.value = type;
+
+        const option = ElzoFormsFieldPicker.options.find(item => item.type === type);
+        const button = field.querySelector('.elzo-forms-field-type-button');
+
+        if (option && button) {
+            const icon = button.querySelector('.elzo-forms-field-type-icon');
+            const optionIcon = option.element.querySelector('.elzo-forms-field-type-icon');
+            const label = button.querySelector('.elzo-forms-field-type-button-label');
+
+            if (icon && optionIcon) icon.replaceWith(optionIcon.cloneNode(true));
+            if (label) label.textContent = option.labelText;
+        }
+
+        ElzoFormsBuildFieldHeaderTitle(field);
+    }
+
+    /**
+     * Change a field's type as one operation.
+     *
+     * The complete type ("text:email") is shown at once and sent to the
+     * server in a single request, which returns settings that already belong
+     * to it.
+     */
+    function ElzoFormsChangeFieldType(field, type) {
+        const typeInput = field ? document.getElementById('elzo-forms-field-type-' + field.getAttribute('data-id')) : null;
+        if (!typeInput || !type || typeInput.value === type) return;
+
+        // The type whose settings are on screen; a failed change returns to it.
+        if (field.elzoSettledType === undefined) {
+            field.elzoSettledType = typeInput.value;
+        }
+
+        ElzoFormsSetFieldType(field, type);
+        ElzoFormsLoadFieldTypeSettings(field, type);
+    }
+
+    // A setting's name inside its field: "[placeholder]", "[range][min]".
+    function ElzoFormsFieldSettingKey(name) {
+        const match = /^elzo_form_fields\[\d+\]\[fields\]\[\d+\](\[.+)$/.exec(name || '');
+
+        return match ? match[1] : '';
+    }
+
+    function ElzoFormsIsCarriedSettingControl(control) {
+        return !['hidden', 'file', 'button', 'submit', 'reset', 'image'].includes(control.type);
+    }
+
+    /**
+     * Read the current values of a field's type-specific settings.
+     *
+     * Values come from the controls on screen, so unsaved edits are included.
+     */
+    function ElzoFormsReadFieldSettingValues(field, wrappers) {
+        const values = {};
+
+        ElzoFormsSyncTinyMCEValues(field);
+
+        wrappers.forEach(wrapper => {
+            wrapper.querySelectorAll('input[name], select[name], textarea[name]').forEach(control => {
+                const key = ElzoFormsFieldSettingKey(control.getAttribute('name'));
+                if (!key || !ElzoFormsIsCarriedSettingControl(control)) return;
+
+                if (control.type === 'checkbox') {
+                    if (key.endsWith('[]')) {
+                        values[key] = values[key] || [];
+                        if (control.checked) values[key].push(control.value);
+                    } else {
+                        values[key] = control.checked;
+                    }
+                } else if (control.type === 'radio') {
+                    if (control.checked) values[key] = control.value;
+                } else if (control.tagName === 'SELECT' && control.multiple) {
+                    values[key] = Array.from(control.selectedOptions, option => option.value);
+                } else {
+                    values[key] = control.value;
+                }
+            });
+        });
+
+        return values;
+    }
+
+    // Give a rebuilt settings wrapper the carried values of the settings it has.
+    function ElzoFormsRestoreFieldSettingValues(wrapper, values) {
+        wrapper.querySelectorAll('input[name], select[name], textarea[name]').forEach(control => {
+            const key = ElzoFormsFieldSettingKey(control.getAttribute('name'));
+            if (!key || !ElzoFormsIsCarriedSettingControl(control) || !Object.prototype.hasOwnProperty.call(values, key)) return;
+
+            const value = values[key];
+
+            if (control.type === 'checkbox') {
+                control.checked = Array.isArray(value) ? value.includes(control.value) : !!value;
+            } else if (control.type === 'radio') {
+                control.checked = control.value === value;
+            } else if (control.tagName === 'SELECT') {
+                const wanted = Array.isArray(value) ? value : [String(value)];
+                const options = Array.from(control.options);
+
+                if (control.multiple) {
+                    options.forEach(option => { option.selected = wanted.includes(option.value); });
+                } else if (options.some(option => option.value === wanted[0])) {
+                    // A value the new type does not offer keeps the new default.
+                    control.value = wanted[0];
+                }
+            } else if (typeof value === 'string') {
+                control.value = value;
+            }
+        });
+    }
+
+    /**
+     * Load the type-specific settings of a field's new type.
+     *
+     * Settings the new type shares with earlier ones keep their current
+     * values, unsaved edits included: they are read from the controls on
+     * screen and remembered for the field across type changes, so switching
+     * Text, Textarea and back to Text loses nothing. ".field-initial-value"
+     * only holds the server's data for the current type.
+     *
+     * A newer change aborts the pending request, and a response only applies
+     * while its request is still current, so quick changes (Text, Email,
+     * Number) always end on the last choice.
+     */
+    function ElzoFormsLoadFieldTypeSettings(field, type) {
+        const fieldDataInput = field.querySelector('.field-initial-value');
+        const fieldSpecificSettingsWrappers = field.querySelectorAll('.elzo-forms-field-specific-settings-wrapper');
+        const formData = new FormData();
+
+        field.elzoCarriedSettings = Object.assign(
+            field.elzoCarriedSettings || {},
+            ElzoFormsReadFieldSettingValues(field, fieldSpecificSettingsWrappers)
+        );
+
+        if (field.elzoTypeRequest) {
+            field.elzoTypeRequest.abort();
+        }
+
+        const request = new AbortController();
+        field.elzoTypeRequest = request;
+
+        formData.append('action', 'elzo_forms');
+        formData.append('nonce', ElzoFormsAdmin.nonce);
+        formData.append('field_type', type);
+        formData.append('field_id', field.querySelector('.field-id-value').value);
+        formData.append('field_index', field.querySelector('.field-index-value').value);
+        formData.append('step_index', field.closest('.elzo-forms-step').querySelector('.step-index-value').value);
+
+        fieldSpecificSettingsWrappers.forEach(wrapper => wrapper.classList.add('loading'));
+
+        const fail = function(message) {
+            if (request.signal.aborted) return;
+
+            field.elzoTypeRequest = null;
+            fieldSpecificSettingsWrappers.forEach(wrapper => wrapper.classList.remove('loading'));
+
+            // The settings on screen still belong to the last loaded type.
+            ElzoFormsSetFieldType(field, field.elzoSettledType);
+            console.error(message);
+        };
+
+        fetch(ElzoFormsAdmin.ajaxurl, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            signal: request.signal
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (request.signal.aborted) return;
+
+            if (!data.success) {
+                fail('An error occurred: ' + (data.data && data.data.message ? data.data.message : 'Unknown error'));
+                return;
+            }
+
+            field.elzoTypeRequest = null;
+            field.elzoSettledType = type;
+
+            const responseData = data.data || {};
+
+            fieldSpecificSettingsWrappers.forEach(wrapper => {
+                wrapper.classList.remove('loading');
+
+                // Editors of the replaced markup would otherwise outlive their textareas.
+                ElzoFormsDestroyTinyMCE(wrapper);
+
+                const category = wrapper.getAttribute('data-setting-category');
+
+                if (responseData.html && responseData.html[category]) {
+                    wrapper.innerHTML = responseData.html[category];
+                    wrapper.style.display = 'block';
+                    ElzoFormsRestoreFieldSettingValues(wrapper, field.elzoCarriedSettings || {});
+                } else {
+                    wrapper.innerHTML = '';
+                    wrapper.style.display = 'none';
+                }
+            });
+
+            if (fieldDataInput && responseData.field) {
+                fieldDataInput.value = JSON.stringify(responseData.field, null, 4);
+            }
+
+            ElzoFormsSyncReadOnlyFieldSettings(field, !!responseData.field?.read_only);
+            ElzoFormsBuildFieldHeaderTitle(field);
+            ElzoFormsInitTinyMCE(field);
+            ElzoFormsFieldSelects();
+            document.dispatchEvent(new CustomEvent('elzo-forms-refresh-logic-elements'));
+        })
+        .catch(error => fail(error));
+    }
+
+    /*
+     * Shared type-picker behavior.
+     *
+     * The field and conditional-type pickers use the same search, ranking,
+     * keyboard, focus and viewport-positioning implementation. Focus stays in
+     * the active search input; aria-activedescendant follows the listbox.
+     */
+    const ElzoFormsFieldPicker = {
+        picker: document.getElementById('elzo-forms-field-picker'),
+        search: null,
+        list: null,
+        results: null,
+        status: null,
+        trigger: null,
+        current: '',
+        onChoose: null,
+        options: [],
+        visible: [],
+        activeIndex: -1,
+    };
+
+    const ElzoFormsConditionTypePicker = {
+        picker: document.getElementById('elzo-forms-condition-type-picker'),
+        search: null,
+        list: null,
+        results: null,
+        status: null,
+        trigger: null,
+        current: '',
+        onChoose: null,
+        options: [],
+        visible: [],
+        activeIndex: -1,
+    };
+
+    const ElzoFormsPickers = [ElzoFormsFieldPicker, ElzoFormsConditionTypePicker];
+
+    // Case-, accent- and whitespace-insensitive form used for matching.
+    function ElzoFormsNormalizePickerText(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    /*
+     * Rank an option against a query; lower is better, null is no match.
+     *
+     * Matching is deliberately literal: names match by prefix, keywords by
+     * whole word prefixes, and a name only matches in the middle for queries
+     * of three characters or more. Single characters match names only.
+     */
+    function ElzoFormsScorePickerOption(option, query, tokens) {
+        if (option.label === query) return 0;
+        if (option.label.startsWith(query)) return 1;
+        if (option.labelWords.some(word => word.startsWith(query))) return 2;
+        if (query.length < 2) return null;
+        if (option.terms.includes(query)) return 3;
+        if (option.terms.some(term => term.startsWith(query))) return 4;
+        if (tokens.every(token => option.words.some(word => word.startsWith(token)))) return 5;
+        if (query.length >= 3 && option.label.includes(query)) return 6;
+
+        return null;
+    }
+
+    function ElzoFormsRevealPickerOption(state, option) {
+        const list = state.list;
+        const element = option.element;
+        const previous = element.previousElementSibling;
+
+        // The first option of a category brings its heading along.
+        const top = (previous && previous.classList.contains('elzo-forms-field-picker-group-label') ? previous : element).offsetTop;
+        const bottom = element.offsetTop + element.offsetHeight;
+        const padding = parseFloat(getComputedStyle(list).paddingTop) || 0;
+
+        if (top - padding < list.scrollTop) {
+            list.scrollTop = Math.max(0, top - padding);
+        } else if (bottom + padding > list.scrollTop + list.clientHeight) {
+            list.scrollTop = bottom + padding - list.clientHeight;
+        }
+    }
+
+    function ElzoFormsSetPickerActive(state, index, reveal = true) {
+        state.options.forEach(option => {
+            option.element.classList.remove('is-active');
+            option.element.setAttribute('aria-selected', 'false');
+        });
+
+        state.activeIndex = state.visible[index] ? index : -1;
+
+        const option = state.visible[state.activeIndex];
+        if (!option) {
+            state.search.removeAttribute('aria-activedescendant');
+            return;
+        }
+
+        option.element.classList.add('is-active');
+        option.element.setAttribute('aria-selected', 'true');
+        state.search.setAttribute('aria-activedescendant', option.element.id);
+
+        if (reveal) ElzoFormsRevealPickerOption(state, option);
+    }
+
+    function ElzoFormsMovePickerActive(state, step) {
+        const count = state.visible.length;
+        if (!count) return;
+
+        const current = state.activeIndex;
+        const next = current < 0
+            ? (step > 0 ? 0 : count - 1)
+            : (current + step + count) % count;
+
+        ElzoFormsSetPickerActive(state, next);
+    }
+
+    /*
+     * Show the options matching the search input.
+     *
+     * An empty search shows every option under its category. A search shows a
+     * flat list ordered by relevance, so the best match is always first.
+     */
+    function ElzoFormsFilterPicker(state) {
+        const query = ElzoFormsNormalizePickerText(state.search.value);
+        const tokens = query ? query.split(' ') : [];
+
+        // Options return to their categories, in order, before every search.
+        state.options.forEach(option => option.group.appendChild(option.element));
+
+        if (query === '') {
+            state.visible = state.options.slice();
+        } else {
+            state.visible = state.options
+                .map(option => ({ option: option, score: ElzoFormsScorePickerOption(option, query, tokens) }))
+                .filter(match => match.score !== null)
+                .sort((a, b) => a.score - b.score || a.option.index - b.option.index)
+                .map(match => match.option);
+
+            state.visible.forEach(option => state.results.appendChild(option.element));
+        }
+
+        state.results.hidden = query === '';
+        state.list.querySelectorAll('.elzo-forms-field-picker-group').forEach(group => {
+            group.hidden = query !== '';
+        });
+
+        const hasResults = state.visible.length > 0;
+        state.list.hidden = !hasResults;
+        state.search.setAttribute('aria-expanded', hasResults ? 'true' : 'false');
+        state.status.textContent = hasResults ? '' : (state.status.getAttribute('data-empty-message') || '');
+
+        // An empty search starts on the field's current type, when there is one.
+        const currentIndex = query === '' ? state.visible.findIndex(option => option.type === state.current) : -1;
+
+        state.list.scrollTop = 0;
+        ElzoFormsSetPickerActive(state, hasResults ? Math.max(0, currentIndex) : -1);
+    }
+
+    /*
+     * Place the picker next to its button, inside the viewport.
+     *
+     * It opens below the button unless there is more room above. Opening
+     * above anchors its bottom edge to the button (see .is-above), so the
+     * picker stays attached while a search shortens the list.
+     */
+    function ElzoFormsPositionPicker(state) {
+        const picker = state.picker;
+        const trigger = state.trigger;
+
+        if (!picker || picker.hidden || !trigger) return;
+
+        const margin = 8;
+        const gap = 4;
+        const rect = trigger.getBoundingClientRect();
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight;
+        const adminBar = document.getElementById('wpadminbar');
+        const topLimit = adminBar && getComputedStyle(adminBar).position === 'fixed'
+            ? Math.max(0, adminBar.getBoundingClientRect().bottom)
+            : 0;
+
+        // Measure at the natural size before fitting the list to the room available.
+        picker.classList.remove('is-above');
+        picker.style.maxWidth = (viewportWidth - margin * 2) + 'px';
+        state.list.style.maxHeight = '';
+
+        const naturalHeight = picker.offsetHeight;
+        const spaceBelow = viewportHeight - rect.bottom - gap - margin;
+        const spaceAbove = rect.top - topLimit - gap - margin;
+        const placeAbove = naturalHeight > spaceBelow && spaceAbove > spaceBelow;
+        const available = placeAbove ? spaceAbove : spaceBelow;
+
+        if (naturalHeight > available) {
+            state.list.style.maxHeight = Math.max(120, state.list.offsetHeight - (naturalHeight - available)) + 'px';
+        }
+
+        const width = picker.offsetWidth;
+        const alignRight = getComputedStyle(trigger).direction === 'rtl';
+        const left = Math.min(
+            Math.max(alignRight ? rect.right - width : rect.left, margin),
+            Math.max(margin, viewportWidth - width - margin)
+        );
+
+        picker.classList.toggle('is-above', placeAbove);
+        picker.style.left = (left + window.scrollX) + 'px';
+        picker.style.top = ((placeAbove ? rect.top - gap : rect.bottom + gap) + window.scrollY) + 'px';
+    }
+
+    /**
+     * Open the picker for a trigger.
+     *
+     * @param {HTMLElement} trigger Button that opened the picker; focus returns to it.
+     * @param {{label: string, current: string, onChoose: function(Object)}} settings
+     *        Dialog label, the current type (if any) and the chosen item handler.
+     */
+    function ElzoFormsOpenPicker(state, trigger, settings) {
+        ElzoFormsPickers.forEach(pickerState => ElzoFormsClosePicker(pickerState, false));
+
+        state.trigger = trigger;
+        state.current = settings.current || '';
+        state.onChoose = settings.onChoose;
+        trigger.setAttribute('aria-expanded', 'true');
+        state.picker.setAttribute('aria-label', settings.label || '');
+        state.options.forEach(option => option.element.classList.toggle('is-current', option.type === state.current));
+
+        // Every opening starts from a clean search.
+        state.search.value = '';
+        ElzoFormsFilterPicker(state);
+
+        state.picker.hidden = false;
+        trigger.scrollIntoView({ block: 'nearest' });
+        ElzoFormsPositionPicker(state);
+
+        // The active option can only be scrolled to once the list is laid out.
+        if (state.visible[state.activeIndex]) {
+            ElzoFormsRevealPickerOption(state, state.visible[state.activeIndex]);
+        }
+
+        state.search.focus({ preventScroll: true });
+    }
+
+    function ElzoFormsClosePicker(state, restoreFocus) {
+        if (!state.picker || state.picker.hidden) return;
+
+        const trigger = state.trigger;
+
+        state.picker.hidden = true;
+        state.trigger = null;
+        state.current = '';
+        state.onChoose = null;
+
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', 'false');
+            if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
+        }
+    }
+
+    function ElzoFormsTogglePicker(state, trigger, settings) {
+        if (!state.picker.hidden && state.trigger === trigger) {
+            ElzoFormsClosePicker(state, true);
+        } else {
+            ElzoFormsOpenPicker(state, trigger, settings);
+        }
+    }
+
+    function ElzoFormsToggleAddFieldPicker(button) {
+        const step = button.closest('.elzo-forms-step');
+
+        // Without the picker markup, keep the builder usable: add a Text field.
+        if (!ElzoFormsFieldPicker.search) {
+            ElzoFormsAddField(step, '');
+            return;
+        }
+
+        ElzoFormsTogglePicker(ElzoFormsFieldPicker, button, {
+            label: ElzoFormsFieldPicker.picker.getAttribute('data-label-add'),
+            onChoose: function(option) {
+                const field = ElzoFormsAddField(step, option.type);
+                const header = field ? field.querySelector('.elzo-forms-field-header') : null;
+
+                if (header) header.scrollIntoView({ block: 'nearest' });
+            },
+        });
+    }
+
+    function ElzoFormsToggleFieldTypePicker(button) {
+        const field = button.closest('.elzo-forms-field');
+        const typeInput = field ? document.getElementById('elzo-forms-field-type-' + field.getAttribute('data-id')) : null;
+
+        if (!typeInput || !ElzoFormsFieldPicker.search) return;
+
+        ElzoFormsTogglePicker(ElzoFormsFieldPicker, button, {
+            label: ElzoFormsFieldPicker.picker.getAttribute('data-label-change'),
+            current: typeInput.value,
+            onChoose: function(option) {
+                ElzoFormsChangeFieldType(field, option.type);
+            },
+        });
+    }
+
+    const ElzoFormsConditionProModal = {
+        modal: document.getElementById('elzo-forms-condition-pro-modal'),
+        trigger: null,
+        bodyOverflow: '',
+    };
+
+    function ElzoFormsOpenConditionProModal(trigger) {
+        const state = ElzoFormsConditionProModal;
+        if (!state.modal) return;
+
+        state.trigger = trigger;
+        state.bodyOverflow = document.body.style.overflow;
+        state.modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+
+        const focusTarget = state.modal.querySelector('.elzo-forms-admin-modal-close')
+            || state.modal.querySelector('[role="dialog"]');
+        if (focusTarget) focusTarget.focus({ preventScroll: true });
+    }
+
+    function ElzoFormsCloseConditionProModal() {
+        const state = ElzoFormsConditionProModal;
+        if (!state.modal || state.modal.hidden) return;
+
+        const trigger = state.trigger;
+        state.modal.hidden = true;
+        state.trigger = null;
+        document.body.style.overflow = state.bodyOverflow;
+
+        if (trigger && trigger.isConnected) trigger.focus({ preventScroll: true });
+    }
+
+    function ElzoFormsToggleConditionTypePicker(button) {
+        const rule = button.closest('.elzo-forms-field-logic-condition-item');
+        const typeSelect = rule ? rule.querySelector('.elzo-forms-field-logic-condition-type-select') : null;
+        if (!typeSelect || !ElzoFormsConditionTypePicker.search) return;
+
+        ElzoFormsTogglePicker(ElzoFormsConditionTypePicker, button, {
+            label: ElzoFormsConditionTypePicker.picker.getAttribute('data-label-change'),
+            current: typeSelect.value,
+            onChoose: function(option) {
+                if (!option.available) {
+                    ElzoFormsOpenConditionProModal(button);
+                    return;
+                }
+
+                if (typeSelect.value === option.type) return;
+                typeSelect.value = option.type;
+                typeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            },
+        });
+    }
+
+    function ElzoFormsChoosePickerOption(state, option) {
+        if (!option || state.picker.hidden) return;
+
+        const trigger = state.trigger;
+        const onChoose = state.onChoose;
+
+        // Close first: the picker is hidden before the choice is applied, so
+        // a repeated Enter or click can never apply it twice.
+        ElzoFormsClosePicker(state, false);
+
+        if (trigger && trigger.isConnected) trigger.focus({ preventScroll: true });
+        if (onChoose) onChoose(option);
+    }
+
+    function ElzoFormsInitPicker(state) {
+        const picker = state.picker;
+        if (!picker) return;
+
+        state.search = picker.querySelector('.elzo-forms-field-picker-search-input');
+        state.list = picker.querySelector('.elzo-forms-field-picker-list');
+        state.results = picker.querySelector('.elzo-forms-field-picker-results');
+        state.status = picker.querySelector('.elzo-forms-field-picker-status');
+
+        if (!state.search || !state.list || !state.results || !state.status) {
+            state.search = null;
+            return;
+        }
+
+        state.options = Array.from(picker.querySelectorAll('.elzo-forms-field-picker-option'), (element, index) => {
+            const labelElement = element.querySelector('.elzo-forms-field-picker-option-label');
+            const label = ElzoFormsNormalizePickerText(labelElement ? labelElement.textContent : '');
+            const labelWords = label.split(' ');
+            const terms = (element.getAttribute('data-picker-keywords') || '')
+                .split('|')
+                .map(ElzoFormsNormalizePickerText)
+                .filter(Boolean);
+
+            return {
+                element: element,
+                group: element.parentElement,
+                index: index,
+                label: label,
+                labelWords: labelWords,
+                terms: terms,
+                words: labelWords.concat(...terms.map(term => term.split(' '))),
+                type: element.getAttribute('data-picker-type') || '',
+                available: element.getAttribute('data-picker-available') !== '0',
+                labelText: labelElement ? labelElement.textContent.trim() : '',
+            };
+        });
+
+        // Positioned against the page, the picker lives directly in <body>: no
+        // ancestor can clip it, it is outside the post form, and it is never
+        // inside a step that "Add Step" or "Duplicate Step" copies.
+        document.body.appendChild(picker);
+
+        state.search.addEventListener('input', function() {
+            ElzoFormsFilterPicker(state);
+        });
+
+        state.search.addEventListener('keydown', function(e) {
+            // Keys that confirm an IME composition belong to the composition.
+            if (e.isComposing || e.keyCode === 229) return;
+
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                ElzoFormsMovePickerActive(state, e.key === 'ArrowDown' ? 1 : -1);
+                return;
+            }
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                ElzoFormsChoosePickerOption(state, state.visible[state.activeIndex]);
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                ElzoFormsClosePicker(state, true);
+                return;
+            }
+
+            if (e.key === 'Tab') {
+                // Focus returns to the button first, so Tab continues from
+                // there instead of from the end of the page.
+                ElzoFormsClosePicker(state, true);
+            }
+        });
+
+        // Hover and keyboard share one active option. mousemove, unlike
+        // mouseover, does not fire when the list scrolls under a still pointer.
+        state.list.addEventListener('mousemove', function(e) {
+            const element = e.target.closest('.elzo-forms-field-picker-option');
+            const index = element ? state.visible.findIndex(option => option.element === element) : -1;
+
+            if (index !== -1 && index !== state.activeIndex) {
+                ElzoFormsSetPickerActive(state, index, false);
+            }
+        });
+
+        // Keep focus in the search input when an option or heading is pressed.
+        state.list.addEventListener('mousedown', function(e) {
+            if (e.target.closest('.elzo-forms-field-picker-option, .elzo-forms-field-picker-group-label')) {
+                e.preventDefault();
+            }
+        });
+
+        state.list.addEventListener('click', function(e) {
+            const element = e.target.closest('.elzo-forms-field-picker-option');
+            if (element) {
+                ElzoFormsChoosePickerOption(state, state.options.find(option => option.element === element));
+            }
+        });
+
+        // Capture phase: close before any other click handler runs, so a step
+        // cloned by the same click never copies an expanded button state.
+        document.addEventListener('click', function(e) {
+            if (picker.hidden || picker.contains(e.target)) return;
+            if (state.trigger && state.trigger.contains(e.target)) return;
+
+            ElzoFormsClosePicker(state, false);
+        }, true);
+
+        // Keep the picker attached to its button when the viewport changes.
+        window.addEventListener('resize', function() {
+            ElzoFormsPositionPicker(state);
+        });
+    }
+
+    ElzoFormsPickers.forEach(ElzoFormsInitPicker);
+
+    if (ElzoFormsConditionProModal.modal) {
+        // Keep the fixed dialog outside #poststuff/.postbox so WordPress admin
+        // heading rules and clipping ancestors cannot alter its presentation.
+        document.body.appendChild(ElzoFormsConditionProModal.modal);
+
+        ElzoFormsConditionProModal.modal.addEventListener('click', function(e) {
+            if (e.target.closest('[data-condition-pro-modal-close]')) {
+                ElzoFormsCloseConditionProModal();
+            }
+        });
+
+        ElzoFormsConditionProModal.modal.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                ElzoFormsCloseConditionProModal();
+                return;
+            }
+
+            if (e.key !== 'Tab') return;
+
+            const focusable = Array.from(ElzoFormsConditionProModal.modal.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                .filter(element => !element.hidden && element.offsetParent !== null);
+            if (!focusable.length) {
+                e.preventDefault();
+                return;
+            }
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        });
+    }
+
     document.body.addEventListener('click', function(e) {
         // Remove confirmation tooltip and class
         const waitingConfirmationTarget = e.target.closest ? e.target.closest('.elzo-forms-waiting-confirmation') : null;
@@ -1583,22 +3315,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Add field
         if (e.target.classList.contains('elzo-forms-add-field-button')) {
-            const repeater = document.getElementById('elzo-forms-steps-repeater');
-            const step = e.target.closest('.elzo-forms-step');
-            const stepFieldsRepeater = step ? step.querySelector('.elzo-forms-fields-repeater') : null;
-            const template = document.getElementById('elzo-forms-repeater-field-template');
-            const templateHTML = template ? template.innerHTML : '';
+            ElzoFormsToggleAddFieldPicker(e.target);
+        }
 
-            if (stepFieldsRepeater) {
-                // Insert the template before the add button
-                stepFieldsRepeater.insertAdjacentHTML('beforeend', templateHTML);
+        // Change field type
+        const fieldTypeButton = e.target.closest ? e.target.closest('.elzo-forms-field-type-button') : null;
+        if (fieldTypeButton) {
+            ElzoFormsToggleFieldTypePicker(fieldTypeButton);
+        }
 
-                // Toggle the field
-                ElzoFormsToggleField(stepFieldsRepeater.lastElementChild);
-            }
-
-            // Update repeater
-            ElzoFormsUpdateRepeaterFields(repeater);
+        // Change conditional logic type through the shared picker behavior.
+        const conditionTypeButton = e.target.closest ? e.target.closest('.elzo-forms-condition-type-button') : null;
+        if (conditionTypeButton) {
+            ElzoFormsToggleConditionTypePicker(conditionTypeButton);
         }
 
         // Remove field
@@ -1637,39 +3366,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const field = e.target.closest('.elzo-forms-field');
             const clonedField = field.cloneNode(true);
 
-            // Let the duplicated field generate a fresh key automatically.
+            // cloneNode() does not reliably copy live select/checkbox state.
+            ElzoFormsCopyFormControlState(field, clonedField);
+
+            // Let the duplicated field generate a fresh key automatically. Do
+            // this after copying live values so the source key is not restored.
             const clonedFieldKeyInput = clonedField.querySelector('.elzo-forms-field-key');
             if (clonedFieldKeyInput) {
                 clonedFieldKeyInput.value = '';
                 clonedFieldKeyInput.dataset.fieldKeyManual = '0';
             }
-
-            // Preserve all form values and states in the cloned field
-            const originalInputs = field.querySelectorAll('input, select, textarea');
-            const clonedInputs = clonedField.querySelectorAll('input, select, textarea');
-
-            originalInputs.forEach((originalInput, index) => {
-                const clonedInput = clonedInputs[index];
-                if (clonedInput) {
-                    // Preserve the value
-                    if (originalInput.type === 'checkbox' || originalInput.type === 'radio') {
-                        clonedInput.checked = originalInput.checked;
-                    } else {
-                        clonedInput.value = originalInput.value;
-                    }
-
-                    // Preserve selected state for select options
-                    if (originalInput.tagName === 'SELECT') {
-                        const originalOptions = originalInput.querySelectorAll('option');
-                        const clonedOptions = clonedInput.querySelectorAll('option');
-                        originalOptions.forEach((originalOption, optionIndex) => {
-                            if (clonedOptions[optionIndex]) {
-                                clonedOptions[optionIndex].selected = originalOption.selected;
-                            }
-                        });
-                    }
-                }
-            });
 
             // Preserve any dynamically added content (like TinyMCE)
             const originalTinyMCEs = field.querySelectorAll('.mce-container');
@@ -1771,6 +3477,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const step = e.target.closest('.elzo-forms-step');
             const clonedStep = step.cloneNode(true);
 
+            // Preserve live condition types/operators and all other configured
+            // controls before reindexing assigns fresh IDs to the cloned fields.
+            ElzoFormsCopyFormControlState(step, clonedStep);
+
             step.insertAdjacentElement('afterend', clonedStep);
 
             // Update repeater
@@ -1781,6 +3491,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const wrapper = e.target.closest('.elzo-forms-field-logic-repeater-wrapper');
             const repeater = wrapper.querySelector('.elzo-forms-field-logic-repeater');
             const template = wrapper.querySelector('.elzo-forms-field-logic-group');
+            const templateFieldLogicItem = template ? template.querySelector('.elzo-forms-field-logic-condition-item') : null;
+            const conditionShape = ElzoFormsReadFieldLogicConditionShape(templateFieldLogicItem);
             const hiddenTemplate = wrapper.querySelector('.elzo-forms-field-logic-group-template');
             const templateHTML = hiddenTemplate
                 ? hiddenTemplate.innerHTML.trim()
@@ -1814,14 +3526,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Refresh whichever condition item type was just cloned
                 const newFieldLogicItem = newGroup ? newGroup.querySelector('.elzo-forms-field-logic-condition-item') : null;
-                if (newFieldLogicItem) ElzoFormsRefreshFieldLogicItem(newFieldLogicItem);
+                if (newFieldLogicItem) ElzoFormsApplyFieldLogicConditionShape(newFieldLogicItem, conditionShape);
             }
         }
 
         // Add conditional logic item
         if (e.target.classList.contains('elzo-forms-field-logic-add-rule-button')) {
             const repeater = e.target.closest('.elzo-forms-field-logic-group-rules');
-            const template = repeater.querySelector('.elzo-forms-field-logic-group-rule');
+            const currentRule = e.target.closest('.elzo-forms-field-logic-group-rule');
+            const template = currentRule || repeater.querySelector('.elzo-forms-field-logic-group-rule');
+            const conditionShape = ElzoFormsReadFieldLogicConditionShape(currentRule);
             const templateHTML = template ? template.outerHTML : '';
 
             if (repeater) {
@@ -1837,7 +3551,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Refresh whichever condition item type was just cloned
                 const newFieldLogicItem = repeater.lastElementChild;
                 if (newFieldLogicItem && newFieldLogicItem.classList.contains('elzo-forms-field-logic-condition-item')) {
-                    ElzoFormsRefreshFieldLogicItem(newFieldLogicItem);
+                    ElzoFormsApplyFieldLogicConditionShape(newFieldLogicItem, conditionShape);
                 }
             }
         }
@@ -1964,114 +3678,6 @@ document.addEventListener('DOMContentLoaded', function() {
         ElzoFormsSyncReadOnlyFieldSettings(field, field.dataset.readOnly === '1');
     });
     document.body.addEventListener('change', function(e) {
-        if (e.target.classList.contains('elzo-forms-field-type-select')) {
-            // Prepare variables
-            const field = e.target.closest('.elzo-forms-field');
-            const fieldDataInput = field.querySelector('.field-initial-value');
-            let fieldData = null;
-            const fieldSpecificSettingsWrappers = field.querySelectorAll('.elzo-forms-field-specific-settings-wrapper');
-            const formData = new FormData();
-            
-            // Try to parse the field data
-            try {
-                // Parse the field data
-                fieldData = fieldDataInput && fieldDataInput.value ? JSON.parse(fieldDataInput.value) : null;
-            } catch (error) {
-                // Log the error message
-                console.error(error);
-            }
-            
-            // Add the required data to the form data object
-            formData.append('action', 'elzo_forms');
-            formData.append('nonce', ElzoFormsAdmin.nonce);
-            formData.append('field_type', e.target.value);
-            formData.append('field_id', field.querySelector('.field-id-value').value);
-            formData.append('field_index', field.querySelector('.field-index-value').value);
-            formData.append('step_index', field.closest('.elzo-forms-step').querySelector('.step-index-value').value);
-
-            // Add "loading" class to all field specific settings wrappers
-            fieldSpecificSettingsWrappers.forEach(wrapper => {
-                wrapper.classList.add('loading');
-            });
-
-            // Make the AJAX request
-            fetch(ElzoFormsAdmin.ajaxurl, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Check if the request was successful
-                if (!data.success){
-                    // Log the error message
-                    console.error('An error occurred: ' + (data.data && data.data.message ? data.data.message : 'Unknown error'));
-
-                    // Break the function
-                    return;
-                }
-
-                const responseData = data.data || {};
-
-                fieldSpecificSettingsWrappers.forEach(wrapper => {
-                    // Remove the "loading" class from the field specific settings wrapper
-                    wrapper.classList.remove('loading');
-
-                    // Get wrapper category
-                    const category = wrapper.getAttribute('data-setting-category');
-
-                    // Check if the request was successful
-                    if (responseData.html && responseData.html[category]) {
-                        // Update the field specific settings
-                        wrapper.innerHTML = responseData.html[category];
-
-                        // Show the wrapper
-                        wrapper.style.display = 'block';
-
-                        // Fill in new fields with the initial values if they exist
-                        wrapper.querySelectorAll('.elzo-forms-field-control').forEach(newField => {
-                            // Get the new field name
-                            const newFieldFullName = newField.getAttribute('name');
-                            const newFieldName = newFieldFullName.split('[').pop().replace(']', '');
-
-                            // Check if the field data exists and the new field name is in it
-                            if (fieldData && fieldData[newFieldName]) {
-                                // Fill in the new field with the initial value
-                                newField.value = fieldData[newFieldName];
-                            }
-                        });
-                    } else {
-                        // Empty the field specific settings
-                        wrapper.innerHTML = '';
-
-                        // Hide the wrapper
-                        wrapper.style.display = 'none';
-                    }
-                });
-
-                if (fieldDataInput) {
-                    const nextFieldData = responseData.field ? responseData.field : Object.assign({}, fieldData || {}, { type: e.target.value });
-                    fieldDataInput.value = JSON.stringify(nextFieldData, null, 4);
-                }
-
-                ElzoFormsSyncReadOnlyFieldSettings(field, !!responseData.field?.read_only);
-
-                // Initialize tinyMCE
-                ElzoFormsInitTinyMCE(field);
-
-                // Update conditional logic dropdowns after field settings change
-                ElzoFormsFieldSelects();
-
-                // Refresh logic elements
-                document.dispatchEvent(new CustomEvent('elzo-forms-refresh-logic-elements'));
-            })
-            .catch(error => {
-                // Log the error message
-                console.error('Error:', error);
-            });
-        }
         if(e.target.classList.contains('elzo-color-picker-opacity')){
             ElzoFormsUpdateColorPicker(e.target.closest('.elzo-color-picker-wrapper'));
         }
@@ -2361,33 +3967,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 document.addEventListener('DOMContentLoaded', function() {
     const LOGIC_CONTEXT = window.ElzoFormsAjax?.logicContext || {};
-    const SERVER_NOW_UTC_SECONDS = Number(LOGIC_CONTEXT.serverNowUtc || 0);
-    const SERVER_NOW_UTC_MS = Number.isFinite(SERVER_NOW_UTC_SECONDS) && SERVER_NOW_UTC_SECONDS > 0
-        ? SERVER_NOW_UTC_SECONDS * 1000
-        : null;
-    const CLIENT_BOOT_MONOTONIC_MS = typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : null;
-    const CLIENT_BOOT_WALLCLOCK_MS = Date.now();
-
+    // Mirrors Conditional_Logic::get_supported_operators(). The fallback is
+    // what runs when the localized list is missing, so it has to carry every
+    // operator PHP knows or a condition silently evaluates to false here while
+    // PHP still honours it.
     const SUPPORTED_LOGIC_OPERATORS = Array.isArray(window.ElzoFormsAjax?.logicOperators)
         ? window.ElzoFormsAjax.logicOperators
-        : ['==', '!=', '>', '<', 'like', 'not_like', 'starts_with', 'ends_with', 'pattern'];
-
-    function getCurrentUtcMs() {
-        if (SERVER_NOW_UTC_MS === null) {
-            return Date.now();
-        }
-
-        // Use monotonic elapsed time when available to avoid jumps if the user
-        // changes their system clock while the page is open.
-        const elapsedMs = CLIENT_BOOT_MONOTONIC_MS !== null && typeof performance !== 'undefined' && typeof performance.now === 'function'
-            ? (performance.now() - CLIENT_BOOT_MONOTONIC_MS)
-            : (Date.now() - CLIENT_BOOT_WALLCLOCK_MS);
-
-        return SERVER_NOW_UTC_MS + elapsedMs;
-    }
-
+        : ['==', '!=', '>', '<', 'like', 'not_like', 'starts_with', 'ends_with', 'pattern',
+           'count_eq', 'count_gt', 'count_lt'];
     /*
      * PHP compiles every user pattern as /…/u (Conditional_Logic::matches_pattern_for_all_values),
      * so the client asks for the same Unicode semantics. A few patterns PCRE reads as literals —
@@ -2437,14 +4024,44 @@ document.addEventListener('DOMContentLoaded', function() {
                 const regex = compileLogicPattern(expected);
                 return regex !== null && values.every(value => regex.test(value));
             }
+            case 'count_eq':
+                return countSubmittedValues(values) === toLogicInt(expected);
+            case 'count_gt':
+                return countSubmittedValues(values) > toLogicInt(expected);
+            case 'count_lt':
+                return countSubmittedValues(values) < toLogicInt(expected);
             default:
                 return false;
         }
     }
 
+    /**
+     * Count the values a field actually submitted.
+     *
+     * Mirrors Conditional_Logic::count_submitted_values(): an empty field
+     * still contributes one empty string so the value operators have
+     * something to compare, and counting that would report one value for a
+     * field that submitted none.
+     */
+    function countSubmittedValues(values) {
+        return values.filter(value => String(value ?? '') !== '').length;
+    }
+
     // -------------------------------------------------------------------------
     // Condition item evaluators
     // -------------------------------------------------------------------------
+
+    /**
+     * Controls that carry a field's submitted value.
+     *
+     * A file field has no .elzo-forms-field control of its own: its value
+     * lives in the hidden inputs of the upload list, one per uploaded file,
+     * which is exactly what the browser posts and what PHP compares against.
+     * The list scope matters -- the item template sits outside it and would
+     * otherwise contribute a permanent empty value.
+     */
+    const LOGIC_VALUE_SELECTOR = '.elzo-forms-field, '
+        + '.elzo-forms-file-drop-area-upload-list .elzo-forms-file-drop-area-upload-list-item-input';
 
     function isComparableInputElement(element) {
         if (!element || !element.tagName) return false;
@@ -2462,6 +4079,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const type = (element.type || '').toLowerCase();
             if (['checkbox', 'radio'].includes(type)) {
                 if (element.checked) values.push(element.value);
+            } else if (element.tagName === 'SELECT' && element.multiple) {
+                // select.value is only the first selected option, so a
+                // multi-select would otherwise hide every choice after the
+                // first from a comparison PHP makes against all of them.
+                Array.from(element.selectedOptions).forEach(function(option) {
+                    if (!option.hasAttribute('data-placeholder')) values.push(option.value);
+                });
             } else {
                 values.push(element.value);
             }
@@ -2488,7 +4112,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function findFieldWrapper(root, fieldId) {
-        return findInRoot(root, '[data-ef-field-id="' + escapeAttributeValue(fieldId) + '"]');
+        // Field rules are always local to their owning form. A document-level
+        // fallback could bind a stale rule to the same logical field in another
+        // instance of the form.
+        return root.querySelector('[data-ef-field-id="' + escapeAttributeValue(fieldId) + '"]');
     }
 
     function evaluateFieldCondition(operator, settings, collectFields, root = document) {
@@ -2497,7 +4124,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const fieldWrapper = findFieldWrapper(root, fieldId);
         const fields = fieldWrapper
-            ? Array.from(fieldWrapper.querySelectorAll('.elzo-forms-field'))
+            ? Array.from(fieldWrapper.querySelectorAll(LOGIC_VALUE_SELECTOR))
             : [];
 
         const values = collectComparableInputValues(fields, collectFields);
@@ -2570,86 +4197,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const parsed = parseInt(String(value ?? '').trim(), 10);
         return Number.isNaN(parsed) ? 0 : parsed;
     }
-
-    function evaluateUserCondition(operator, settings) {
-        const ctx = LOGIC_CONTEXT;
-        if (!ctx) return false;
-
-        const roles  = Array.isArray(ctx.userRoles) ? ctx.userRoles : [];
-        const userId = Number(ctx.userId) || 0;
-
-        /*
-         * Guests fail every user condition, matching the early return in PHP
-         * Conditional_Logic::evaluate_user_item(). Without this, the negative
-         * operators (role_not_equals, role_not_in, id_not_equals, id_not_in)
-         * would pass here against empty roles / id 0 but fail server side, so a
-         * logged-out visitor would see a field whose value is later discarded.
-         */
-        if (userId <= 0) return false;
-
-        /*
-         * PHP builds the list with array_filter(), which drops both '' and '0',
-         * and the equality operators read only its first entry — so a rule
-         * written as "editor, author" matches on "editor" there and must not be
-         * compared as a whole string here.
-         */
-        const list = String(settings.value ?? '')
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s !== '' && s !== '0');
-        const first = list.length ? list[0] : null;
-        const ids   = list.map(toLogicInt);
-
-        switch (operator) {
-            case 'role_equals':     return first !== null && roles.includes(first);
-            case 'role_not_equals': return first !== null && !roles.includes(first);
-            case 'role_in':         return list.some(r => roles.includes(r));
-            case 'role_not_in':     return !list.some(r => roles.includes(r));
-            case 'id_equals':       return first !== null && userId === toLogicInt(first);
-            case 'id_not_equals':   return first !== null && userId !== toLogicInt(first);
-            case 'id_in':           return ids.includes(userId);
-            case 'id_not_in':       return !ids.includes(userId);
-            default:                return false;
-        }
-    }
-
-    function parseCookies() {
-        const cookies = {};
-        document.cookie.split(';').forEach(function(part) {
-            const idx = part.indexOf('=');
-            if (idx < 0) return;
-            const k = decodeURIComponent(part.slice(0, idx).trim());
-            const v = decodeURIComponent(part.slice(idx + 1).trim());
-            cookies[k] = v;
-        });
-        return cookies;
-    }
-
-    function evaluateCookieCondition(operator, settings) {
-        const name     = String(settings.name  ?? '').trim();
-        const expected = String(settings.value ?? '');
-        if (!name) return false;
-
-        const cookies = parseCookies();
-        const exists  = Object.prototype.hasOwnProperty.call(cookies, name);
-        const actual  = exists ? cookies[name] : '';
-
-        switch (operator) {
-            case 'exists':      return exists;
-            case 'not_exists':  return !exists;
-            case 'equals':      return exists && actual === expected;
-            case 'not_equals':  return exists && actual !== expected;
-            case 'contains':    return exists && expected !== '' && actual.includes(expected);
-            case 'not_contains':return exists && !actual.includes(expected);
-            case 'pattern': {
-                if (!exists || !expected) return false;
-                const regex = compileLogicPattern(expected);
-                return regex !== null && regex.test(actual);
-            }
-            default:            return false;
-        }
-    }
-
     function sanitizeLogicKey(value) {
         return String(value ?? '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
     }
@@ -2670,6 +4217,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return pageIds;
     }
 
+    function collectConditionPostTypes(settings) {
+        const rawPostTypes = settings?.post_types ?? settings?.post_type ?? settings?.value ?? [];
+        const values = Array.isArray(rawPostTypes)
+            ? rawPostTypes
+            : String(rawPostTypes).split(/[,\s]+/);
+
+        return [...new Set(values.map(sanitizeLogicKey).filter(Boolean))];
+    }
+
     function evaluatePageCondition(operator, settings) {
         // The admin screens reuse this file without a page context; without it the
         // condition stays closed, matching PHP Conditional_Logic::evaluate_page_item().
@@ -2679,7 +4235,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const currentPostType = sanitizeLogicKey(LOGIC_CONTEXT.currentPostType);
 
         const pageIds = collectConditionPageIds(settings);
-        const postType = sanitizeLogicKey(settings?.post_type) || sanitizeLogicKey(settings?.value);
+        const postTypes = collectConditionPostTypes(settings);
+        const postType = postTypes[0] || '';
 
         switch (operator) {
             case 'page_id_equals':       return !!pageIds[0] && currentPageId === pageIds[0];
@@ -2688,103 +4245,18 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'page_id_not_in':       return !pageIds.includes(currentPageId);
             case 'post_type_equals':     return postType !== '' && currentPostType === postType;
             case 'post_type_not_equals': return postType !== '' && currentPostType !== postType;
+            case 'post_type_in':         return postTypes.length > 0 && postTypes.includes(currentPostType);
+            case 'post_type_not_in':     return postTypes.length > 0 && !postTypes.includes(currentPostType);
             default:                     return false;
         }
     }
-
-    function evaluateUrlCondition(operator, settings) {
-        const expected = String(settings?.value ?? '');
-        const actual   = typeof window.location !== 'undefined' ? String(window.location.href) : '';
-
-        switch (operator) {
-            case 'not_equals':   return actual !== expected;
-            case 'contains':     return expected !== '' && actual.toLowerCase().includes(expected.toLowerCase());
-            case 'not_contains': return expected !== '' && !actual.toLowerCase().includes(expected.toLowerCase());
-            case 'starts_with':  return expected !== '' && actual.startsWith(expected);
-            case 'ends_with':    return expected !== '' && actual.endsWith(expected);
-            case 'pattern': {
-                if (!expected) return false;
-                const regex = compileLogicPattern(expected);
-                return regex !== null && regex.test(actual);
-            }
-            case 'equals':
-            default:             return actual === expected;
-        }
-    }
-
-    function parseDateTimeValueToUtcMs(value) {
-        const raw = String(value ?? '').trim();
-        if (!raw) return null;
-
-        if (/[zZ]|[+\-]\d{2}:?\d{2}$/.test(raw)) {
-            const parsed = Date.parse(raw);
-            return Number.isNaN(parsed) ? null : parsed;
-        }
-
-        const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
-        if (match) {
-            const year = Number(match[1]);
-            const month = Number(match[2]);
-            const day = Number(match[3]);
-            const hour = Number(match[4]);
-            const minute = Number(match[5]);
-            const second = Number(match[6] || 0);
-            return Date.UTC(year, month - 1, day, hour, minute, second);
-        }
-
-        const fallback = Date.parse(raw + 'Z');
-        return Number.isNaN(fallback) ? null : fallback;
-    }
-
-    function getDateTimeSettingUtcMs(settings, key) {
-        const timestampKey = key + '_timestamp';
-        const rawTimestamp = Number(settings?.[timestampKey]);
-        if (Number.isFinite(rawTimestamp) && rawTimestamp > 0) {
-            return rawTimestamp > 1e12 ? rawTimestamp : rawTimestamp * 1000;
-        }
-
-        return parseDateTimeValueToUtcMs(settings?.[key]);
-    }
-
-    function evaluateDateTimeCondition(operator, settings) {
-        const nowUtcMs = getCurrentUtcMs();
-        const startUtcMs = getDateTimeSettingUtcMs(settings, 'start_time')
-            ?? parseDateTimeValueToUtcMs(settings?.value);
-
-        switch (operator) {
-            case 'before':
-                return startUtcMs !== null && nowUtcMs < startUtcMs;
-            case 'after':
-                return startUtcMs !== null && nowUtcMs > startUtcMs;
-            default:
-                return false;
-        }
-    }
-
-    function evaluateDefaultCondition(type, operator, settings, collectFields, root) {
-        switch (type) {
-            case 'field':
-                return evaluateFieldCondition(operator, settings, collectFields, root);
-            case 'input':
-                return evaluateInputCondition(operator, settings, collectFields, root);
-            case 'auth':
-                return evaluateAuthCondition(operator);
-            case 'user':
-                return evaluateUserCondition(operator, settings);
-            case 'cookie':
-                return evaluateCookieCondition(operator, settings);
-            case 'page':
-                return evaluatePageCondition(operator, settings);
-            case 'url':
-                return evaluateUrlCondition(operator, settings);
-            default:
-                return false;
-        }
-    }
-
     /**
      * Evaluate a single condition item {type, operator, settings} — matches PHP
      * Conditional_Logic::evaluate_condition_item().
+     *
+     * A type this build does not ship fails closed, as it does in PHP: the FREE
+     * build drops the PRO evaluators, so a saved PRO rule can never show a field
+     * here whose value the server would then discard.
      */
     function evaluateConditionItem(item, collectFields, root) {
         const type     = item.type     || 'field';
@@ -2792,10 +4264,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const settings = item.settings || {};
 
         switch (type) {
-            case 'date_time':
-                return evaluateDateTimeCondition(operator, settings);
+            case 'field':
+                return evaluateFieldCondition(operator, settings, collectFields, root);
+            case 'input':
+                return evaluateInputCondition(operator, settings, collectFields, root);
+            case 'auth':
+                return evaluateAuthCondition(operator);
+            case 'page':
+                return evaluatePageCondition(operator, settings);
             default:
-                return evaluateDefaultCondition(type, operator, settings, collectFields, root);
+                return false;
         }
     }
 
