@@ -543,31 +543,15 @@ class File_Upload_Handler {
             return 0;
         }
 
-        $unattached_dir = self::get_unattached_upload_dir($upload_dir);
-        $base_url = rtrim((string) $upload_dir['baseurl'], '/');
         $deleted = 0;
 
         foreach ($file_urls as $file_url) {
-            if (!is_string($file_url) || $file_url === '') {
+            $resolved = is_string($file_url) ? self::resolve_permanent_file_url($file_url) : null;
+            if ($resolved === null) {
                 continue;
             }
-
-            $clean_url = self::strip_url_query_and_fragment($file_url);
-            if ($clean_url === '' || strpos($clean_url, $base_url . '/') !== 0) {
-                continue;
-            }
-
-            $relative_path = ltrim(substr($clean_url, strlen($base_url)), '/');
-            $file_path = rtrim((string) $upload_dir['basedir'], '/\\') . '/' . $relative_path;
-
-            if (!is_file($file_path) || is_link($file_path)) {
-                continue;
-            }
-
-            if (!self::path_is_in_directory($file_path, $user_uploads_dir)
-                || self::path_is_in_directory($file_path, $unattached_dir)) {
-                continue;
-            }
+            $file_path = $resolved['path'];
+            Uploaded_File::delete_preview($resolved);
 
             wp_delete_file($file_path);
 
@@ -578,6 +562,43 @@ class File_Upload_Handler {
         }
 
         return $deleted;
+    }
+
+    /**
+     * Resolve a stored URL to an existing permanent Elzo Forms upload.
+     *
+     * Shared by presentation and cleanup. No HTTP requests are made. Rejects
+     * temporary uploads, traversal, symlinks and paths outside the upload root.
+     *
+     * @param string $file_url Untrusted stored URL.
+     * @return array{path: string, url: string}|null Trusted local file reference.
+     */
+    public static function resolve_permanent_file_url(string $file_url): ?array {
+        $parts = wp_parse_url($file_url);
+        if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true)
+            || isset($parts['user']) || isset($parts['pass'])) {
+            return null;
+        }
+        $upload_dir = wp_upload_dir();
+        $base_url = rtrim((string) $upload_dir['baseurl'], '/');
+        $clean_url = self::strip_url_query_and_fragment($file_url);
+        if ($clean_url === '' || strpos($clean_url, $base_url . '/') !== 0) {
+            return null;
+        }
+
+        $relative_path = rawurldecode(substr($clean_url, strlen($base_url) + 1));
+        if (strpos($relative_path, "\0") !== false || strpos($relative_path, '\\') !== false
+            || preg_match('~(?:^|/)\.\.?(?:/|$)~', $relative_path)) {
+            return null;
+        }
+        $file_path = rtrim((string) $upload_dir['basedir'], '/\\') . '/' . $relative_path;
+        if (!is_file($file_path) || is_link($file_path)
+            || !self::path_is_in_directory($file_path, self::get_user_uploads_dir($upload_dir))
+            || self::path_is_in_directory($file_path, self::get_unattached_upload_dir($upload_dir))) {
+            return null;
+        }
+
+        return ['path' => $file_path, 'url' => $clean_url];
     }
 
     /**
@@ -649,6 +670,23 @@ class File_Upload_Handler {
 
         return self::ensure_upload_directory($user_uploads_dir)
             && self::ensure_upload_directory(self::get_unattached_upload_dir($upload_dir), true);
+    }
+
+    /**
+     * Create a plugin-owned uploads directory that denies direct web access.
+     *
+     * @param string $name Directory name below uploads/elzo-forms: lowercase letters, digits and hyphens.
+     * @return string Absolute directory path, or an empty string when it could not be created.
+     */
+    public static function ensure_private_directory(string $name): string {
+        if (!preg_match('/^[a-z0-9-]{1,40}$/', $name)) {
+            return '';
+        }
+
+        $upload_dir = wp_upload_dir();
+        $directory = rtrim((string) $upload_dir['basedir'], '/\\') . '/elzo-forms/' . $name;
+
+        return self::ensure_upload_directory($directory, true) ? $directory : '';
     }
 
     /**

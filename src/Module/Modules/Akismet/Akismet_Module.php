@@ -72,6 +72,7 @@ class Akismet_Module extends Module {
                 'label' => __('API Key', 'elzo-forms'),
                 'description' => __('Your Akismet API key. Get it from <a href="https://akismet.com/account/" target="_blank">Akismet Account</a>.', 'elzo-forms'),
                 'default' => '',
+                'sensitive' => true,
             ],
             'treat_errors_as_spam' => [
                 'type' => 'boolean',

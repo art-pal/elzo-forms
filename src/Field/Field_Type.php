@@ -136,6 +136,25 @@ final class Field_Type {
     }
 
     /**
+     * Validate a historical type identifier without requiring its extension.
+     *
+     * Unlike normalize(), this preserves unknown variants in imported snapshots
+     * so installing their field extension later can restore presentation.
+     *
+     * @param mixed $type Untrusted type identifier.
+     * @return string Valid identifier, or empty for invalid input.
+     */
+    public static function sanitize_identifier($type): string {
+        if (!is_string($type)) {
+            return '';
+        }
+
+        $type = trim($type);
+
+        return preg_match('/\A[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)?\z/', $type) ? $type : '';
+    }
+
+    /**
      * Normalize the type of a field definition.
      *
      * Writes the canonical type and removes a legacy separate "subtype", so a

@@ -4,7 +4,7 @@ Tags: contact form, form builder, file upload, conditional logic, multi step for
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -312,6 +312,23 @@ Akismet is governed by Automattic's terms and privacy policy:
 For support, use the WordPress.org support forum for this plugin or visit https://elzoforms.com.
 
 == Changelog ==
+
+= 1.2.0 =
+
+* Added import and export tools for forms and submissions.
+* Added form duplication from the forms list and editor.
+* Added a date range filter to the submissions list.
+* Added a Reply-To address for email notifications with Smart Tag support.
+* New submissions can now remain unread until they are opened.
+* Improved how field values are displayed in the submission editor and notification emails.
+* Improved the Variables editor and picker across form settings.
+* Improved the conditional logic layout and type picker.
+* Fixed duplicate field types appearing in field selectors.
+* Fixed generated HTML IDs conflicting when the same form appears more than once on a page.
+* Fixed multi-step forms leaving the last step after an inline success message.
+* Fixed the Default option of form settings showing a different value than the one the form actually uses.
+* Email notifications are now on by default for forms that follow the default setting. Sites that already saved their global form settings keep the choice stored there.
+* Changed the generated HTML IDs of form fields to include the form, so each copy of a form on a page has its own. Update custom CSS or JavaScript that selects fields by their old IDs.
 
 = 1.1.0 =
 

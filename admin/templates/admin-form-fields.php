@@ -17,7 +17,7 @@
 ?>
 <div id="elzo-forms-repeater" class="elzo-forms-repeater-wrapper elzo-forms-wrapper">
     <div id="elzo-forms-repeater-field-template" style="display:none">
-        <?php include plugin_dir_path(__DIR__) . 'templates/admin-form-field.php'; ?>
+        <?php require plugin_dir_path(__DIR__) . 'templates/admin-form-field.php'; ?>
     </div>
     <div class="elzo-forms-repeater-toggle-actions-wrapper">
         <a href="#" class="elzo-forms-toggle-all-button" data-elzo-toggle-all="expand" data-elzo-toggle-target=".elzo-forms-fields-repeater .elzo-forms-field"><?php esc_html_e('Expand all', 'elzo-forms'); ?></a>
@@ -97,6 +97,6 @@
     <div class="elzo-forms-repeater-footer elzo-forms-steps-footer">
         <button type="button" class="button button-primary elzo-forms-add-step-button"><?php esc_html_e('Add Step', 'elzo-forms'); ?></button>
     </div>
-    <?php include plugin_dir_path(__DIR__) . 'templates/admin-form-field-picker.php'; ?>
+    <?php require plugin_dir_path(__DIR__) . 'templates/admin-form-field-picker.php'; ?>
     <?php require plugin_dir_path(__DIR__) . 'templates/admin-condition-type-picker.php'; ?>
 </div>

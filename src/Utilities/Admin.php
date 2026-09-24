@@ -363,6 +363,6 @@ class Admin {
         }
 
         // Return mime types as a string
-        return $return_format == 'array' ? $mime_types : implode(', ', $mime_types);
+        return $return_format === 'array' ? $mime_types : implode(', ', $mime_types);
     }
 }

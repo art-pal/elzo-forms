@@ -51,13 +51,13 @@ defined('ABSPATH') || exit;
             <tr>
                 <th scope="row"><label for="elzo_forms_texts_settings_email_notification_subject"><?php esc_html_e('Email notification subject', 'elzo-forms'); ?></label></th>
                 <td>
-                    <input type="text" class="regular-text" name="elzo_forms_texts_settings[email_notification_subject]" id="elzo_forms_texts_settings_email_notification_subject" value="<?php echo !empty($texts_settings['email_notification_subject']) ? esc_attr($texts_settings['email_notification_subject']) : ''; ?>" placeholder="<?php echo esc_attr($default_texts_settings['email_notification_subject']); ?>">
+                    <input data-elzo-variables="notification" type="text" class="regular-text" name="elzo_forms_texts_settings[email_notification_subject]" id="elzo_forms_texts_settings_email_notification_subject" value="<?php echo !empty($texts_settings['email_notification_subject']) ? esc_attr($texts_settings['email_notification_subject']) : ''; ?>" placeholder="<?php echo esc_attr($default_texts_settings['email_notification_subject']); ?>">
                 </td>
             </tr>
             <tr>
                 <th scope="row"><label for="elzo_forms_texts_settings_email_notification_message"><?php esc_html_e('Email notification message', 'elzo-forms'); ?></label></th>
                 <td>
-                    <textarea name="elzo_forms_texts_settings[email_notification_message]" class="regular-text" id="elzo_forms_texts_settings_email_notification_message" rows="3" placeholder="<?php echo esc_attr($default_texts_settings['email_notification_message']); ?>"><?php echo !empty($texts_settings['email_notification_message']) ? esc_textarea($texts_settings['email_notification_message']) : ''; ?></textarea>
+                    <textarea data-elzo-variables="notification" name="elzo_forms_texts_settings[email_notification_message]" class="regular-text" id="elzo_forms_texts_settings_email_notification_message" rows="3" placeholder="<?php echo esc_attr($default_texts_settings['email_notification_message']); ?>"><?php echo !empty($texts_settings['email_notification_message']) ? esc_textarea($texts_settings['email_notification_message']) : ''; ?></textarea>
                 </td>
             </tr>
             <tr>

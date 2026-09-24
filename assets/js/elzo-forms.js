@@ -281,7 +281,7 @@ function ElzoFormsOpenModal(message, button, options = {}){
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'elzo-forms-button elzo-forms-w-100 elzo-forms-modal-close';
-    closeBtn.setAttribute('aria-label', 'Close dialog');
+    closeBtn.setAttribute('aria-label', (window.ElzoFormsAjax && window.ElzoFormsAjax.texts && window.ElzoFormsAjax.texts.closeDialog) || 'Close dialog');
     closeBtn.textContent = button;
 
     buttonsWrapper.appendChild(closeBtn);
@@ -528,6 +528,59 @@ function ElzoFormsDiscardUpload(item) {
     }).catch(function() {});
 }
 
+/*
+ * Mark a control valid or invalid for assistive technology as well as for
+ * styling. An invalid control gets aria-invalid and an aria-describedby
+ * reference to the region that shows its step's validation message; the
+ * references it already had, such as its help text, are kept.
+ */
+function ElzoFormsSetValidationState(control, invalid, errorClasses, messageId) {
+    if (!control) {
+        return;
+    }
+
+    if (errorClasses && errorClasses.length) {
+        if (invalid) {
+            control.classList.add(...errorClasses);
+        } else {
+            control.classList.remove(...errorClasses);
+        }
+    }
+
+    if (invalid) {
+        control.setAttribute('aria-invalid', 'true');
+    } else {
+        control.removeAttribute('aria-invalid');
+    }
+
+    if (!messageId) {
+        return;
+    }
+
+    const references = String(control.getAttribute('aria-describedby') || '')
+        .split(/\s+/)
+        .filter(function(reference) {
+            return reference !== '' && reference !== messageId;
+        });
+
+    if (invalid) {
+        references.push(messageId);
+    }
+
+    if (references.length) {
+        control.setAttribute('aria-describedby', references.join(' '));
+    } else {
+        control.removeAttribute('aria-describedby');
+    }
+}
+
+function ElzoFormsStepMessageId(element) {
+    const step = element ? element.closest('.elzo-forms-step') : null;
+    const region = step ? step.querySelector('.elzo-forms-step-alert-wrapper') : null;
+
+    return region && region.id ? region.id : '';
+}
+
 function ElzoFormsFindOptionByValue(select, value) {
     return Array.from(select.options).find(function(option) {
         return option.value === value;
@@ -595,6 +648,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         const inputs = step.querySelectorAll('input, textarea, select');
+        const messageId = ElzoFormsStepMessageId(step);
         const checkboxGroups = step.querySelectorAll('.elzo-forms-checkbox-list-wrapper');
         const fileDropAreas = step.querySelectorAll('.elzo-forms-file-drop-area');
         const context = {
@@ -623,9 +677,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     valid = false;
                     context.invalidFields.push(input);
 
-                    input.classList.add(...errorClass);
+                    ElzoFormsSetValidationState(input, true, errorClass, messageId);
                 } else {
-                    input.classList.remove(...errorClass);
+                    ElzoFormsSetValidationState(input, false, errorClass, messageId);
                 }
             });
         }
@@ -671,12 +725,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     checkboxes.forEach(function(checkbox) {
                         if(tooFew && !checkbox.checked || tooMany && checkbox.checked) {
                             context.invalidFields.push(checkbox);
-                            checkbox.classList.add(...errorClass);
+                            ElzoFormsSetValidationState(checkbox, true, errorClass, messageId);
                         }
                     });
                 } else {
                     checkboxes.forEach(function(checkbox) {
-                        checkbox.classList.remove(...errorClass);
+                        ElzoFormsSetValidationState(checkbox, false, errorClass, messageId);
                     });
                 }
             });
@@ -731,8 +785,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     context.invalidFileDropAreas.push(dropArea);
 
                     dropArea.classList.add(...errorClass);
+                    ElzoFormsSetValidationState(input, true, [], messageId);
                 } else {
                     dropArea.classList.remove(...errorClass);
+                    ElzoFormsSetValidationState(input, false, [], messageId);
                 }
             });
         }
@@ -813,8 +869,11 @@ document.addEventListener('DOMContentLoaded', function() {
      * field types added later without listing them here. What it cannot reach
      * is the markup the plugin renders on top of a control, so the widgets
      * that mirror one are resynced from it afterwards.
+     *
+     * A multi-step form goes back to its first step unless `keepStep` is set,
+     * which the caller uses when something on the active step must stay in view.
      */
-    function ElzoFormsResetForm(form) {
+    function ElzoFormsResetForm(form, options = {}) {
         if (!form || typeof form.reset !== 'function') {
             return;
         }
@@ -840,6 +899,10 @@ document.addEventListener('DOMContentLoaded', function() {
             element.classList.remove('invalid');
         });
 
+        form.querySelectorAll('[aria-invalid]').forEach(function(element) {
+            ElzoFormsSetValidationState(element, false, [], ElzoFormsStepMessageId(element));
+        });
+
         // Custom select facades, range sliders and conditional logic all
         // rebuild themselves from a change event, which a native reset never
         // fires. File inputs are left out: they drive the upload pipeline.
@@ -854,7 +917,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const steps = form.querySelectorAll('.elzo-forms-step');
-        if (steps.length > 1) {
+        if (steps.length > 1 && !options.keepStep) {
             ElzoFormsChangeStep(form, steps[0], 'reset', null);
         }
     }
@@ -1043,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     ElzoFormsRefreshConditionalLogic();
                 }, 400);
             } else {
-                ElzoFormsTooltip(e.target, 'Are you sure you want to remove this file?');
+                ElzoFormsTooltip(e.target, ElzoFormsTexts.confirmRemoveFile || 'Are you sure you want to remove this file?');
 
                 e.target.classList.add('elzo-forms-waiting-confirmation');
             }
@@ -1321,20 +1384,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     submitContext.phase = 'success';
                     window.wp.hooks.doAction('elzoForms.form.success', form, response, data, formData, submitContext);
-                    
+
+                    const redirectUrl = data.redirect_url ? data.redirect_url : '';
+
+                    const redirectDelay = data.redirect_delay ? parseFloat(data.redirect_delay) : 0;
+
+                    const showMessage = !!message && (!redirectUrl || redirectDelay > 0);
+
                     if (settings.clear_form_after_submission == 'yes') {
-                        ElzoFormsResetForm(form);
+                        // An inline message goes into the active step, so a
+                        // multi-step form must not leave that step to reset.
+                        ElzoFormsResetForm(form, {
+                            keepStep: showMessage && settings.form_alert_type != 'modal'
+                        });
                     }
 
                     if (settings.hide_form_after_submission == 'yes') {
                         form.style.display = 'none';
                     }
 
-                    const redirectUrl = data.redirect_url ? data.redirect_url : '';
-
-                    const redirectDelay = data.redirect_delay ? parseFloat(data.redirect_delay) : 0;
-
-                    if(message && (!redirectUrl || redirectDelay > 0)){
+                    if(showMessage){
                         ElzoFormsShowSubmissionMessage(message, settings, alertContainer, 'success', {
                             reason: 'submissionSuccess',
                             trigger: null
@@ -2010,6 +2079,29 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
+     * Resolve a field HTML ID of Elzo Forms 1.1 ("elzo-forms-field-{id}" or
+     * "elzo-forms-field-wrapper-{id}"). Rendered IDs are now namespaced by the
+     * form instance, so such an ID is matched through the stored field ID,
+     * within the form being evaluated.
+     */
+    function findLegacyFieldWrapper(root, targetId) {
+        const match = /^elzo-forms-field-(.+)$/.exec(targetId);
+        if (!match) return null;
+
+        const candidates = [match[1]];
+        if (match[1].indexOf('wrapper-') === 0) {
+            candidates.push(match[1].slice('wrapper-'.length));
+        }
+
+        for (const fieldId of candidates) {
+            const wrapper = findFieldWrapper(root, fieldId);
+            if (wrapper) return wrapper;
+        }
+
+        return null;
+    }
+
+    /**
      * Internal-only condition type for arbitrary form controls.
      *
      * Supported settings:
@@ -2023,7 +2115,8 @@ document.addEventListener('DOMContentLoaded', function() {
         let elements = [];
 
         if (targetId) {
-            const targetElement = findInRoot(root, '[id="' + escapeAttributeValue(targetId) + '"]');
+            const targetElement = findInRoot(root, '[id="' + escapeAttributeValue(targetId) + '"]')
+                || findLegacyFieldWrapper(root, targetId);
             if (targetElement) {
                 if (isComparableInputElement(targetElement)) {
                     elements = [targetElement];

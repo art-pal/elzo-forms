@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.2.0
  *
  * Available variables (extracted from $field_data):
  * @var string $id Field ID
@@ -43,6 +43,7 @@ defined('ABSPATH') || exit;
     class="<?php echo esc_attr($class); ?>" 
     id="<?php echo esc_attr($id); ?>" 
     placeholder="<?php echo esc_attr($placeholder); ?>" 
+    <?php if (!empty($described_by)) { ?>aria-describedby="<?php echo esc_attr($described_by); ?>"<?php } ?>
     <?php if(!empty($autocomplete)){ ?>autocomplete="<?php echo esc_attr($autocomplete); ?>"<?php } ?>
     <?php if($required && !$logic_rules){ ?>required<?php } ?> 
     value="<?php echo esc_attr($value); ?>"

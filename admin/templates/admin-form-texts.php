@@ -3,5 +3,5 @@
 defined('ABSPATH') || exit;
 
     // Texts
-    include plugin_dir_path(__DIR__) . 'templates/admin-settings-texts.php';
+    require plugin_dir_path(__DIR__) . 'templates/admin-settings-texts.php';
 ?>

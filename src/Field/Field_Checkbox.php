@@ -118,11 +118,11 @@ class Field_Checkbox extends Field {
         $values_to_check = is_array($value) ? $value : (!empty($value) ? [$value] : []);
 
         $options = $this->get('options', []);
-        $option_values = array_column($options, 'value');
+        $option_values = array_map('strval', array_column($options, 'value'));
 
         if (!empty($values_to_check)) {
             foreach ($values_to_check as $val) {
-                if (!in_array($val, $option_values)) {
+                if (!is_scalar($val) || !in_array((string) $val, $option_values, true)) {
                     return new \WP_Error(
                         'invalid_option',
                         /* translators: 1: Field title, 2: Invalid value, 3: Valid option list. */
@@ -204,7 +204,7 @@ class Field_Checkbox extends Field {
         $data = parent::get_data($context);
 
         $styles = \ElzoForms\Utilities\Admin::get_field_checkbox_styles();
-        $style = !empty($this->get('style')) && in_array($this->get('style'), array_keys($styles))
+        $style = !empty($this->get('style')) && in_array($this->get('style'), array_keys($styles), true)
             ? $this->get('style')
             : array_key_first($styles);
 

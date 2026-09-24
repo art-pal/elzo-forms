@@ -12,12 +12,13 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.1.0
+ * @version     1.2.0
  *
  * @var ElzoForms\Form\Step $step Step object
  * @var int $steps_total Total number of steps
  * @var array $texts_settings Text settings from form
- * @var string $form_instance_suffix DOM ID suffix for repeated form instances
+ * @var \ElzoForms\Form\Form_Instance|null $form_instance Rendered form instance
+ * @var string $form_instance_suffix Deprecated: ID suffix of Elzo Forms 1.1 for repeated forms
  */
 
 // Exit if accessed directly
@@ -88,7 +89,7 @@ $field_layout = $step_data['field_layout'] ?? [];
         ?>
     </div>
     
-    <div class="elzo-forms-step-alert-wrapper"></div>
+    <div class="elzo-forms-step-alert-wrapper"<?php if (!empty($form_instance)) { ?> id="<?php echo esc_attr($form_instance->step_alert_id($step_index)); ?>"<?php } ?>></div>
     
     <div class="elzo-forms-step-footer elzo-forms-row">
         <?php if (!$step->is_first()): ?>

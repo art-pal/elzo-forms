@@ -9,8 +9,8 @@
  * @wordpress-plugin
  * Plugin Name:       Elzo Forms
  * Plugin URI:        https://elzoforms.com
- * Description:       Build forms with multiple file uploads, stored submissions, conditions, multi-step flows, and Gutenberg support — free.
- * Version:           1.1.0
+ * Description:       Build flexible forms with file uploads, stored submissions, conditions, multi-step flows, and Gutenberg support.
+ * Version:           1.2.0
  * Requires at least: 6.5
  * Tested up to:      7.1
  * Requires PHP:      7.4
@@ -24,7 +24,7 @@
 defined('ABSPATH') || exit;
 
 if (!defined('ELZO_FORMS_VERSION')) {
-    define('ELZO_FORMS_VERSION', '1.1.0');
+    define('ELZO_FORMS_VERSION', '1.2.0');
 }
 
 /**

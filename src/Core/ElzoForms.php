@@ -76,6 +76,13 @@ class ElzoForms {
         \ElzoForms\Upload\File_Upload_Handler::init();
         \ElzoForms\Upload\Submission_File_Cleanup::init();
 
+        // A submission is marked unread where it is stored, which is an AJAX
+        // request in the admin context or an ordinary front-end request.
+        \ElzoForms\Submission\Read_State::init();
+
+        // Remove import files that were uploaded but never confirmed.
+        add_action('elzo_forms_cleanup_unattached_uploads', [\ElzoForms\ImportExport\Pending_Import::class, 'cleanup_expired']);
+
         // Initialize JSON storage.
         add_action('init', [\ElzoForms\Form\Form_JSON_Storage::class, 'init'], 10);
     }
@@ -105,6 +112,9 @@ class ElzoForms {
      */
     protected function include_admin(): void {
         include_once ELZO_FORMS_PATH . 'admin/admin.php';
+
+        \ElzoForms\ImportExport\Admin_Controller::init();
+        \ElzoForms\Form\Form_Duplicator::init();
     }
 
     /**

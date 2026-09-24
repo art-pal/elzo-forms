@@ -2,7 +2,8 @@
     defined('ABSPATH') || exit;
 
     // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Included inside the admin meta-box callback scope.
-    $condition_picker_groups = \ElzoForms\Admin\Condition_Type_Picker::get_item_groups();
+    $condition_picker_groups = $condition_picker_groups ?? \ElzoForms\Admin\Condition_Type_Picker::get_item_groups();
+    $condition_picker_id = $condition_picker_id ?? 'elzo-forms-condition-type-picker';
     $condition_picker_has_locked_items = false;
     foreach ($condition_picker_groups as $condition_picker_group) {
         if (array_filter($condition_picker_group['items'], static function (array $item): bool {
@@ -16,15 +17,15 @@
         ? \ElzoForms\Utilities\Admin::get_pro_url('field_logic_condition_modal')
         : '';
 ?>
-<div class="elzo-forms-field-picker elzo-forms-condition-type-picker" id="elzo-forms-condition-type-picker" role="dialog" aria-label="<?php echo esc_attr__('Choose condition type', 'elzo-forms'); ?>" data-label-change="<?php echo esc_attr__('Choose condition type', 'elzo-forms'); ?>" hidden>
+<div class="elzo-forms-field-picker elzo-forms-condition-type-picker" id="<?php echo esc_attr($condition_picker_id); ?>" role="dialog" aria-label="<?php echo esc_attr__('Choose condition type', 'elzo-forms'); ?>" data-label-change="<?php echo esc_attr__('Choose condition type', 'elzo-forms'); ?>" hidden>
     <div class="elzo-forms-field-picker-search">
         <i class="elzo-icon elzo-icon-search" aria-hidden="true"></i>
-        <input type="search" id="elzo-forms-condition-type-picker-search" class="elzo-forms-field-picker-search-input" placeholder="<?php echo esc_attr__('Search conditions', 'elzo-forms'); ?>" aria-label="<?php echo esc_attr__('Search conditions', 'elzo-forms'); ?>" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="elzo-forms-condition-type-picker-list" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <input type="search" id="<?php echo esc_attr($condition_picker_id . '-search'); ?>" class="elzo-forms-field-picker-search-input" placeholder="<?php echo esc_attr__('Search conditions', 'elzo-forms'); ?>" aria-label="<?php echo esc_attr__('Search conditions', 'elzo-forms'); ?>" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="<?php echo esc_attr($condition_picker_id . '-list'); ?>" autocomplete="off" autocapitalize="off" spellcheck="false">
     </div>
-    <div id="elzo-forms-condition-type-picker-list" class="elzo-forms-field-picker-list" role="listbox" aria-label="<?php echo esc_attr__('Condition types', 'elzo-forms'); ?>">
+    <div id="<?php echo esc_attr($condition_picker_id . '-list'); ?>" class="elzo-forms-field-picker-list" role="listbox" aria-label="<?php echo esc_attr__('Condition types', 'elzo-forms'); ?>">
         <div class="elzo-forms-field-picker-results" role="presentation" hidden></div>
         <?php foreach ($condition_picker_groups as $condition_picker_group): ?>
-            <?php $condition_picker_group_label_id = 'elzo-forms-condition-type-picker-group-' . sanitize_html_class($condition_picker_group['key']); ?>
+            <?php $condition_picker_group_label_id = $condition_picker_id . '-group-' . sanitize_html_class($condition_picker_group['key']); ?>
             <div class="elzo-forms-field-picker-group" role="group" aria-labelledby="<?php echo esc_attr($condition_picker_group_label_id); ?>">
                 <div id="<?php echo esc_attr($condition_picker_group_label_id); ?>" class="elzo-forms-field-picker-group-label" role="presentation"><?php echo esc_html($condition_picker_group['label']); ?></div>
                 <?php foreach ($condition_picker_group['items'] as $condition_picker_item): ?>

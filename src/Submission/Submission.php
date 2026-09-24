@@ -38,6 +38,9 @@ class Submission {
     /** @var bool Whether submission should be marked as spam */
     protected bool $is_spam_flag = false;
 
+    /** @var string Original GMT submission date applied when the submission is first saved */
+    protected string $post_date_gmt = '';
+
     /**
      * Constructor.
      *
@@ -182,7 +185,7 @@ class Submission {
     public function get_field_value(string $field_id) {
         $fields = $this->get_fields();
         foreach ($fields as $field) {
-            if (isset($field['id']) && $field['id'] == $field_id) {
+            if (isset($field['id']) && (string) $field['id'] === $field_id) {
                 return $field['value'] ?? null;
             }
         }
@@ -305,6 +308,15 @@ class Submission {
                 $this->sync_index_meta();
             }
         } else {
+            // The submitter owns the post: a guest is stored as 0 rather than
+            // as whoever runs the request that stores the submission.
+            $post_data['post_author'] = max(0, $user_id);
+
+            if ($this->post_date_gmt !== '') {
+                $post_data['post_date_gmt'] = $this->post_date_gmt;
+                $post_data['post_date'] = get_date_from_gmt($this->post_date_gmt);
+            }
+
             $result = wp_insert_post($post_data, true);
 
             if (!is_wp_error($result)) {
@@ -487,6 +499,19 @@ class Submission {
      */
     public function set_submitted_in(int $seconds): self {
         $this->data['submitted_in'] = $seconds;
+        return $this;
+    }
+
+    /**
+     * Set the original date of a submission stored after the fact.
+     *
+     * Applies when the submission is first saved, so a restored submission
+     * keeps the date it was made rather than the date it was stored.
+     *
+     * @param string $date_gmt GMT date in Y-m-d H:i:s format.
+     */
+    public function set_post_date_gmt(string $date_gmt): self {
+        $this->post_date_gmt = $date_gmt;
         return $this;
     }
 

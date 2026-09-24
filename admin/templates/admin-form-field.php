@@ -50,12 +50,12 @@
         <div class="elzo-forms-tabs">
             <div class="elzo-forms-tabs-header">
                 <?php $index = 0; foreach($tabs as $tab_key => $tab_label): $index++; ?>
-                    <button type="button" class="elzo-forms-tab-button elzo-forms-tab-button-<?php echo esc_attr($tab_key); ?> <?php echo $tab_key == 'logic' && !empty($field['logic']) ? 'has-logic' : ''; ?> <?php echo $index == 1 ? 'active' : ''; ?>" data-tab-target="<?php echo esc_attr($tab_key); ?>"><?php echo esc_html($tab_label); ?></button>
+                    <button type="button" class="elzo-forms-tab-button elzo-forms-tab-button-<?php echo esc_attr($tab_key); ?> <?php echo $tab_key === 'logic' && !empty($field['logic']) ? 'has-logic' : ''; ?> <?php echo $index === 1 ? 'active' : ''; ?>" data-tab-target="<?php echo esc_attr($tab_key); ?>"><?php echo esc_html($tab_label); ?></button>
                 <?php endforeach; ?>
             </div>
             <div class="elzo-forms-tabs-body">
                 <?php $index = 0; foreach($tabs as $tab_key => $tab_label): $index++; ?>
-                    <div class="elzo-forms-tab" data-tab="<?php echo esc_attr($tab_key); ?>" <?php echo $index == 1 ? '' : 'style="display:none"'; ?> >
+                    <div class="elzo-forms-tab" data-tab="<?php echo esc_attr($tab_key); ?>" <?php echo $index === 1 ? '' : 'style="display:none"'; ?> >
                         <?php include plugin_dir_path(__DIR__) . 'templates/admin-form-field-'.$tab_key.'.php'; ?>
                     </div>
                 <?php endforeach; ?>

@@ -36,7 +36,7 @@ defined('ABSPATH') || exit;
                         <div class="elzo-color-picker-facade">
                             <div class="elzo-color-picker-facade-preview" style="background-color:<?php echo esc_attr(!empty($style_settings['primary_color']) ? $style_settings['primary_color'] : '#0073aa'); ?>"></div>
                             <button type="button" class="elzo-color-picker-facade-toggler button"><?php esc_html_e('Select color', 'elzo-forms'); ?></button>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['primary_color'])&&$style_settings['primary_color']!='#0073aa'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['primary_color'])&&$style_settings['primary_color']!=='#0073aa'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" value="<?php echo esc_attr($style_settings['primary_color']??'') ?>" id="elzo_forms_style_settings_primary_color" class="elzo-color-picker" data-default-color="#0073aa">
                     </div>
@@ -50,7 +50,7 @@ defined('ABSPATH') || exit;
                         <div class="elzo-color-picker-facade">
                             <div class="elzo-color-picker-facade-preview" style="background-color:<?php echo esc_attr(!empty($style_settings['primary_text_color']) ? $style_settings['primary_text_color'] : '#ffffff'); ?>"></div>
                             <button type="button" class="elzo-color-picker-facade-toggler button"><?php esc_html_e('Select color', 'elzo-forms'); ?></button>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['primary_text_color'])&&$style_settings['primary_text_color']!='#ffffff'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['primary_text_color'])&&$style_settings['primary_text_color']!=='#ffffff'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" value="<?php echo esc_attr($style_settings['primary_text_color']??'') ?>" id="elzo_forms_style_settings_primary_text_color" class="elzo-color-picker" data-default-color="#ffffff">
                     </div>
@@ -67,7 +67,7 @@ defined('ABSPATH') || exit;
                         <div class="elzo-color-picker-facade">
                             <div class="elzo-color-picker-facade-preview" style="background-color:<?php echo esc_attr(!empty($style_settings['error_color']) ? $style_settings['error_color'] : '#dc3545'); ?>"></div>
                             <button type="button" class="elzo-color-picker-facade-toggler button"><?php esc_html_e('Select color', 'elzo-forms'); ?></button>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['error_color'])&&$style_settings['error_color']!='#dc3545'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['error_color'])&&$style_settings['error_color']!=='#dc3545'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" value="<?php echo esc_attr($style_settings['error_color']??'') ?>" id="elzo_forms_style_settings_error_color" class="elzo-color-picker" data-default-color="#dc3545">
                     </div>
@@ -82,7 +82,7 @@ defined('ABSPATH') || exit;
                         <div class="elzo-color-picker-facade">
                             <div class="elzo-color-picker-facade-preview" style="background-color:<?php echo esc_attr(!empty($style_settings['success_color']) ? $style_settings['success_color'] : '#0073aa'); ?>"></div>
                             <button type="button" class="elzo-color-picker-facade-toggler button"><?php esc_html_e('Select color', 'elzo-forms'); ?></button>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['success_color'])&&$style_settings['success_color']!='#0073aa'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['success_color'])&&$style_settings['success_color']!=='#0073aa'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" value="<?php echo esc_attr($style_settings['success_color']??'') ?>" id="elzo_forms_style_settings_success_color" class="elzo-color-picker" data-default-color="#0073aa">
                     </div>
@@ -99,7 +99,7 @@ defined('ABSPATH') || exit;
                             <div class="elzo-color-picker-opacity-box" title="<?php echo esc_attr__('Opacity', 'elzo-forms'); ?>">
                                 <input type="number" name="elzo_forms_style_settings[light_color_opacity]" min="0" max="100" class="elzo-color-picker-opacity" value="<?php echo esc_attr($style_settings['light_color_opacity']??'') ?>" placeholder="100" size="3"> %
                             </div>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['light_color'])&&$style_settings['light_color']!='#f1f1f1'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['light_color'])&&$style_settings['light_color']!=='#f1f1f1'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" name="elzo_forms_style_settings[light_color_hex]" value="<?php echo esc_attr($style_settings['light_color_hex']??'') ?>" id="elzo_forms_style_settings_light_color" class="elzo-color-picker" data-default-color="#f1f1f1">
                     </div>
@@ -116,7 +116,7 @@ defined('ABSPATH') || exit;
                             <div class="elzo-color-picker-opacity-box" title="<?php echo esc_attr__('Opacity', 'elzo-forms'); ?>">
                                 <input type="number" name="elzo_forms_style_settings[input_border_color_opacity]" min="0" max="100" class="elzo-color-picker-opacity" value="<?php echo esc_attr($style_settings['input_border_color_opacity']??'') ?>" placeholder="100" size="3"> %
                             </div>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['input_border_color'])&&$style_settings['input_border_color']!='#cccccc'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['input_border_color'])&&$style_settings['input_border_color']!=='#cccccc'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" name="elzo_forms_style_settings[input_border_color_hex]" value="<?php echo esc_attr($style_settings['input_border_color_hex']??'') ?>" id="elzo_forms_style_settings_input_border_color" class="elzo-color-picker" data-default-color="#cccccc">
                     </div>
@@ -133,7 +133,7 @@ defined('ABSPATH') || exit;
                             <div class="elzo-color-picker-opacity-box" title="<?php echo esc_attr__('Opacity', 'elzo-forms'); ?>">
                                 <input type="number" name="elzo_forms_style_settings[input_text_color_opacity]" min="0" max="100" class="elzo-color-picker-opacity" value="<?php echo esc_attr($style_settings['input_text_color_opacity']??'') ?>" placeholder="100" size="3"> %
                             </div>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['input_text_color'])&&$style_settings['input_text_color']!='#000000'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['input_text_color'])&&$style_settings['input_text_color']!=='#000000'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" name="elzo_forms_style_settings[input_text_color_hex]" value="<?php echo esc_attr($style_settings['input_text_color_hex']??'') ?>" id="elzo_forms_style_settings_input_text_color" class="elzo-color-picker" data-default-color="#000000">
                     </div>
@@ -150,7 +150,7 @@ defined('ABSPATH') || exit;
                             <div class="elzo-color-picker-opacity-box" title="<?php echo esc_attr__('Opacity', 'elzo-forms'); ?>">
                                 <input type="number" name="elzo_forms_style_settings[input_background_color_opacity]" min="0" max="100" class="elzo-color-picker-opacity" value="<?php echo esc_attr($style_settings['input_background_color_opacity']??'') ?>" placeholder="100" size="3"> %
                             </div>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['input_background_color'])&&$style_settings['input_background_color']!='#ffffff'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['input_background_color'])&&$style_settings['input_background_color']!=='#ffffff'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" name="elzo_forms_style_settings[input_background_color_hex]" value="<?php echo esc_attr($style_settings['input_background_color_hex']??'') ?>" id="elzo_forms_style_settings_input_background_color" class="elzo-color-picker" data-default-color="#ffffff">
                     </div>
@@ -165,7 +165,7 @@ defined('ABSPATH') || exit;
                         <div class="elzo-color-picker-facade">
                             <div class="elzo-color-picker-facade-preview" style="background-color:<?php echo esc_attr(!empty($style_settings['floating_background_color']) ? $style_settings['floating_background_color'] : '#ffffff'); ?>"></div>
                             <button type="button" class="elzo-color-picker-facade-toggler button"><?php esc_html_e('Select color', 'elzo-forms'); ?></button>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['floating_background_color'])&&$style_settings['floating_background_color']!='#ffffff'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['floating_background_color'])&&$style_settings['floating_background_color']!=='#ffffff'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" value="<?php echo esc_attr($style_settings['floating_background_color']??'') ?>" id="elzo_forms_style_settings_floating_background_color" class="elzo-color-picker" data-default-color="#ffffff">
                     </div>
@@ -179,7 +179,7 @@ defined('ABSPATH') || exit;
                         <div class="elzo-color-picker-facade">
                             <div class="elzo-color-picker-facade-preview" style="background-color:<?php echo esc_attr(!empty($style_settings['floating_text_color']) ? $style_settings['floating_text_color'] : '#000000'); ?>"></div>
                             <button type="button" class="elzo-color-picker-facade-toggler button"><?php esc_html_e('Select color', 'elzo-forms'); ?></button>
-                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['floating_text_color'])&&$style_settings['floating_text_color']!='#000000'?'':'style="display:none"'; ?>>&times;</button>
+                            <button type="button" class="elzo-color-picker-facade-clear button" <?php echo !empty($style_settings['floating_text_color'])&&$style_settings['floating_text_color']!=='#000000'?'':'style="display:none"'; ?>>&times;</button>
                         </div>
                         <input type="text" value="<?php echo esc_attr($style_settings['floating_text_color']??'') ?>" id="elzo_forms_style_settings_floating_text_color" class="elzo-color-picker" data-default-color="#000000">
                     </div>

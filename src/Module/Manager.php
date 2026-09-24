@@ -43,7 +43,7 @@ class Manager {
 
     private function get_form_enabled_override(int $form_id): array {
         $content = get_post_field('post_content', $form_id);
-        $data = $content ? json_decode($content, true) : null;
+        $data = $content ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $content) : null;
         $overrides = [];
         if (is_array($data) && isset($data['modules']) && is_array($data['modules'])) {
             foreach ($data['modules'] as $modId => $modData) {
@@ -58,7 +58,7 @@ class Manager {
 
     private function get_form_settings(string $id, int $form_id): array {
         $content = get_post_field('post_content', $form_id);
-        $data = $content ? json_decode($content, true) : null;
+        $data = $content ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $content) : null;
         if (is_array($data) && isset($data['modules'][$id]['settings']) && is_array($data['modules'][$id]['settings'])) {
             return $data['modules'][$id]['settings'];
         }

@@ -1,7 +1,6 @@
 // TinyMCE initialization
 function ElzoFormsInitTinyMCE(scope = document) {
     if (typeof tinymce === 'undefined') {
-        console.error('TinyMCE is not defined.');
         return;
     }
 
@@ -288,6 +287,10 @@ function ElzoFormsToggleField(field) {
         icon.classList.remove('elzo-icon-chevron-down');
         icon.classList.add('elzo-icon-chevron-up');
     }
+
+    field.querySelectorAll(':scope > .elzo-forms-field-header .elzo-forms-automation-toggle-button, :scope > .elzo-forms-field-header .elzo-forms-automation-action-toggle-button').forEach(button => {
+        button.setAttribute('aria-expanded', field.classList.contains('active') ? 'true' : 'false');
+    });
 }
 
 // Toggle all fields in a wrapper (expand or collapse)
@@ -821,7 +824,7 @@ document.addEventListener('DOMContentLoaded', function() {
             output = output.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
         }
 
-        output = output.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        output = output.replace(/[^a-z0-9_]+/g, '-').replace(/^-+|-+$/g, '');
 
         if (!output) {
             const hasNonAscii = /[^\x00-\x7F]/.test(original);
@@ -905,7 +908,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function ElzoFormsRefreshAllFieldKeys() {
-        const usedKeys = {};
+        const usedKeys = Object.create(null);
         const fields = document.querySelectorAll('.elzo-forms-form-fields .elzo-forms-field');
 
         fields.forEach(function(field) {
@@ -1188,6 +1191,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ElzoFormsSyncContentPickerPresentation(picker);
 
         if (unresolved.length) ElzoFormsResolveContentPickerLabels(picker, unresolved);
+        document.dispatchEvent(new CustomEvent('elzoforms:content-picker-rendered', { detail: { root: picker } }));
     }
 
     /**
@@ -1749,11 +1753,11 @@ document.addEventListener('DOMContentLoaded', function() {
      * Refresh UI of a single field-visibility condition item after type or operator changes.
      * Mirrors ElzoFormsRefreshAutomationConditionItem but for .elzo-forms-field-logic-condition-item elements.
      */
-    function ElzoFormsSyncConditionTypeButton(item, type) {
+    function ElzoFormsSyncConditionTypeButton(item, type, picker = ElzoFormsConditionTypePicker) {
         const button = item.querySelector('.elzo-forms-condition-type-button');
         if (!button) return;
 
-        const option = ElzoFormsConditionTypePicker.options.find(candidate => candidate.type === type);
+        const option = picker.options.find(candidate => candidate.type === type);
         if (!option) return; // Preserve PHP's defensive fallback for unknown saved types.
 
         const label = button.querySelector('.elzo-forms-condition-type-button-label');
@@ -2231,7 +2235,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (logicValueSource === 'disabled') {
                 replacementField.value = '';
-                replacementField.placeholder = 'Not available for this field type';
+                replacementField.placeholder = (window.ElzoFormsAdmin && window.ElzoFormsAdmin.logicValueUnavailable) || 'Not available for this field type';
                 replacementField.readOnly = true;
             } else if (logicValuePlaceholder) {
                 // The field says what its value looks like; without the hint an
@@ -2284,7 +2288,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         if (filteredOptions.length === 0) {
-            operatorSelect.innerHTML = '<option value="">Not available</option>';
+            const unavailableOption = document.createElement('option');
+            unavailableOption.value = '';
+            unavailableOption.textContent = (window.ElzoFormsAdmin && window.ElzoFormsAdmin.logicOperatorUnavailable) || 'Not available';
+            operatorSelect.innerHTML = '';
+            operatorSelect.appendChild(unavailableOption);
             operatorSelect.value = '';
             return;
         }
@@ -2361,8 +2369,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const optionLogicValuePlaceholder = option.logicValuePlaceholder ? String(option.logicValuePlaceholder).replace(/"/g, '&quot;') : '';
                 const optionLogicOperators = JSON.stringify(option.logicOperators).replace(/"/g, '&quot;');
                 const optionTitle = option.title ? String(option.title).replace(/"/g, '&quot;') : '';
-                const optionLabelText = option.type ? (option.title || '') + ' - ' + option.type.replace(/[_:-]+/g, ' ') + ' field' : (option.title || '');
-                const optionLabel = ElzoFormsTruncateLogicOptionLabel(optionLabelText);
+                const optionLabel = ElzoFormsTruncateLogicOptionLabel(option.title || '');
                 optionsHTML = optionsHTML + '<option value="' + option.id + '" title="' + optionTitle + '" data-field-type="' + optionType + '" data-field-options="' + optionFieldOptions + '" data-logic-value-source="' + optionLogicValueSource + '" data-logic-value-placeholder="' + optionLogicValuePlaceholder + '" data-logic-operators="' + optionLogicOperators + '">' + optionLabel + '</option>';
             });
 
@@ -2396,8 +2403,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Set the select value
                     select.value = selectValue;
 
-                    // Action settings must require an explicit field choice. Other
-                    // field selectors keep their historical first-option default.
+                    // Action settings and automation conditions must require an
+                    // explicit field choice. Other field selectors keep their
+                    // historical first-option default.
                     if (!select.value) {
                         if (select.options.length > 1) {
                             select.selectedIndex = 1;
@@ -2808,7 +2816,6 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const ElzoFormsPickers = [ElzoFormsFieldPicker, ElzoFormsConditionTypePicker];
-
     // Case-, accent- and whitespace-insensitive form used for matching.
     function ElzoFormsNormalizePickerText(value) {
         return String(value || '')
@@ -3125,7 +3132,6 @@ document.addEventListener('DOMContentLoaded', function() {
             },
         });
     }
-
     function ElzoFormsChoosePickerOption(state, option) {
         if (!option || state.picker.hidden) return;
 
@@ -3854,38 +3860,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const buttonText = this.textContent;
             const submissionDataTable = document.getElementById('elzo-submission-data-table');
             const valueFields = submissionDataTable.querySelectorAll('.elzo-submission-line-value-field');
-            const valueTextElements = submissionDataTable.querySelectorAll('.elzo-submission-line-value-text');
+            const valueDisplays = submissionDataTable.querySelectorAll('.elzo-submission-line-value-display');
+            const editing = this.getAttribute('aria-expanded') !== 'true';
+            this.setAttribute('aria-expanded', String(editing));
 
-            // Toggle the visibility of the value fields
+            // Keep server-rendered links and previews intact between Edit/Close.
             valueFields.forEach(function(valueField) {
-                if (valueField.style.display === 'none') {
-                    valueField.style.display = 'block';
-                } else {
-                    valueField.style.display = 'none';
-                }
+                valueField.style.display = editing ? 'block' : 'none';
             });
-
-            // Toggle the visibility of the text elements
-            valueTextElements.forEach(function(valueTextElement) {
-                if (valueTextElement.style.display === 'none') {
-                    const valueField = valueTextElement.nextElementSibling;
-
-                    // If the next element is a value field, copy its value to the text element
-                    if (valueField && valueField.classList.contains('elzo-submission-line-value-field')) {
-                        const valueSubFields = valueField.querySelectorAll('.elzo-submission-line-value-subfield');
-                        if( valueSubFields.length > 0) {
-                            // If there are subfields, filter and join their values
-                            valueTextElement.textContent = Array.from(valueSubFields).map(subField => subField.value).filter(value => value).join(', ');
-                        } else {
-                            // If there are no subfields, use the value of the field
-                            valueTextElement.textContent = valueField.value ? valueField.value : '-';
-                        }
-                    }
-
-                    valueTextElement.style.display = 'block';
-                } else {
-                    valueTextElement.style.display = 'none';
-                }
+            valueDisplays.forEach(function(valueDisplay) {
+                valueDisplay.style.display = editing ? 'none' : 'block';
             });
 
             // Toggle the text of the button
@@ -4135,6 +4119,29 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
+     * Resolve a field HTML ID of Elzo Forms 1.1 ("elzo-forms-field-{id}" or
+     * "elzo-forms-field-wrapper-{id}"). Rendered IDs are now namespaced by the
+     * form instance, so such an ID is matched through the stored field ID,
+     * within the form being evaluated.
+     */
+    function findLegacyFieldWrapper(root, targetId) {
+        const match = /^elzo-forms-field-(.+)$/.exec(targetId);
+        if (!match) return null;
+
+        const candidates = [match[1]];
+        if (match[1].indexOf('wrapper-') === 0) {
+            candidates.push(match[1].slice('wrapper-'.length));
+        }
+
+        for (const fieldId of candidates) {
+            const wrapper = findFieldWrapper(root, fieldId);
+            if (wrapper) return wrapper;
+        }
+
+        return null;
+    }
+
+    /**
      * Internal-only condition type for arbitrary form controls.
      *
      * Supported settings:
@@ -4148,7 +4155,8 @@ document.addEventListener('DOMContentLoaded', function() {
         let elements = [];
 
         if (targetId) {
-            const targetElement = findInRoot(root, '[id="' + escapeAttributeValue(targetId) + '"]');
+            const targetElement = findInRoot(root, '[id="' + escapeAttributeValue(targetId) + '"]')
+                || findLegacyFieldWrapper(root, targetId);
             if (targetElement) {
                 if (isComparableInputElement(targetElement)) {
                     elements = [targetElement];

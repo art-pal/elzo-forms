@@ -7,6 +7,14 @@ defined('ABSPATH') || exit;
     // Form settings
     $form_global_settings = get_option('elzo_forms_form_settings', array());
     $form_default_settings = \ElzoForms\Services\Settings::get_default_settings();
+    // Label of the value a form inherits: the global setting, or the plugin default while none is saved.
+    $inherited_setting_label = static function (string $key, array $labels) use ($form_global_settings, $form_default_settings): string {
+        $value = isset($form_global_settings[$key]) && is_string($form_global_settings[$key]) && isset($labels[$form_global_settings[$key]])
+            ? $form_global_settings[$key]
+            : (string) ($form_default_settings[$key] ?? '');
+
+        return $labels[$value] ?? '';
+    };
 
     $alert_types = \ElzoForms\Utilities\Admin::get_alert_types();
 
@@ -15,9 +23,10 @@ defined('ABSPATH') || exit;
     $form_alert_type = isset($form_settings['form_alert_type']) ? $form_settings['form_alert_type'] : (!empty($elzo_plugin_settings) ? $form_default_settings['form_alert_type'] : '');
     $clear_form_after_submission = isset($form_settings['clear_form_after_submission']) ? $form_settings['clear_form_after_submission'] : (!empty($elzo_plugin_settings) ? $form_default_settings['clear_form_after_submission'] : '');
     $hide_form_after_submission = isset($form_settings['hide_form_after_submission']) ? $form_settings['hide_form_after_submission'] : (!empty($elzo_plugin_settings) ? $form_default_settings['hide_form_after_submission'] : '');
+    $submission_read_state = isset($form_settings['submission_read_state']) ? $form_settings['submission_read_state'] : (!empty($elzo_plugin_settings) ? $form_default_settings['submission_read_state'] : '');
     $blocked_ips = isset($form_settings['blocked_ips']) ? $form_settings['blocked_ips'] : '';
     $blocked_words = isset($form_settings['blocked_words']) ? $form_settings['blocked_words'] : '';
-    $blocked_submission_action = isset($form_settings['blocked_submission_action']) ? $form_settings['blocked_submission_action'] : (!empty($elzo_plugin_settings) ? 'remove' : 'spam');
+    $blocked_submission_action = isset($form_settings['blocked_submission_action']) ? $form_settings['blocked_submission_action'] : (!empty($elzo_plugin_settings) ? $form_default_settings['blocked_submission_action'] : '');
     $min_submission_interval = isset($form_settings['min_submission_interval']) ? $form_settings['min_submission_interval'] : '';
     $min_submission_delay = isset($form_settings['min_submission_delay']) ? $form_settings['min_submission_delay'] : '';
 ?>
@@ -58,9 +67,7 @@ defined('ABSPATH') || exit;
                     <select name="elzo_forms_form_settings[email_notifications]" id="elzo_forms_form_settings_email_notifications">
                         <?php if(empty($elzo_plugin_settings)){ // Display only on the form edit page ?>
                             <option value=""><?php echo esc_html__('Default', 'elzo-forms'); ?> (<?php
-                                echo !empty($form_global_settings['email_notifications']) && in_array($form_global_settings['email_notifications'], ['yes', 'no'])
-                                    ? esc_html(ucfirst($form_global_settings['email_notifications']))
-                                    : esc_html__('Yes', 'elzo-forms');
+                                echo esc_html($inherited_setting_label('email_notifications', ['yes' => __('Yes', 'elzo-forms'), 'no' => __('No', 'elzo-forms')]));
                             ?>)</option>
                         <?php } ?>
                         <option value="yes" <?php selected($email_notifications, 'yes'); ?>><?php esc_html_e('Yes', 'elzo-forms'); ?></option>
@@ -73,8 +80,37 @@ defined('ABSPATH') || exit;
                     <label for="elzo_forms_form_settings_email_notification_recipients"><?php esc_html_e('Email notification recipients', 'elzo-forms'); ?></label>
                 </th>
                 <td>
-                    <textarea name="elzo_forms_form_settings[email_notification_recipients]" class="regular-text" id="elzo_forms_form_settings_email_notification_recipients" rows="3"><?php echo !empty($form_settings['email_notification_recipients']) ? esc_textarea($form_settings['email_notification_recipients']) : ''; ?></textarea>
+                    <textarea data-elzo-variables="notification" data-elzo-variable-destination="email_recipient" name="elzo_forms_form_settings[email_notification_recipients]" class="regular-text" id="elzo_forms_form_settings_email_notification_recipients" rows="3"><?php echo !empty($form_settings['email_notification_recipients']) ? esc_textarea($form_settings['email_notification_recipients']) : ''; ?></textarea>
                     <p class="description"><?php esc_html_e('Enter email addresses separated by commas. By default, the email address of the site administrator is used.', 'elzo-forms'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="elzo_forms_form_settings_email_notification_reply_to"><?php esc_html_e('Email notification Reply-To', 'elzo-forms'); ?></label>
+                </th>
+                <td>
+                    <input data-elzo-variables="notification" data-elzo-variable-destination="email_recipient" type="text" class="regular-text" name="elzo_forms_form_settings[email_notification_reply_to]" id="elzo_forms_form_settings_email_notification_reply_to" value="<?php echo !empty($form_settings['email_notification_reply_to']) ? esc_attr($form_settings['email_notification_reply_to']) : ''; ?>">
+                    <p class="description"><?php esc_html_e('Enter one email address, or a variable such as the submitted email field, to reply to the submitter directly. Leave empty to use the sender address of the site.', 'elzo-forms'); ?></p>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <h3 class="elzo-forms-admin-search-heading"><?php esc_html_e('Submissions', 'elzo-forms'); ?></h3>
+    <table class="form-table">
+        <tbody class="elzo-forms-admin-search-list">
+            <tr>
+                <th scope="row"><label for="elzo_forms_form_settings_submission_read_state"><?php esc_html_e('Mark new submissions as unread', 'elzo-forms'); ?></label></th>
+                <td>
+                    <select name="elzo_forms_form_settings[submission_read_state]" id="elzo_forms_form_settings_submission_read_state">
+                        <?php if(empty($elzo_plugin_settings)){ // Display only on the form edit page ?>
+                            <option value=""><?php echo esc_html__('Default', 'elzo-forms'); ?> (<?php
+                                echo esc_html($inherited_setting_label('submission_read_state', ['yes' => __('Yes', 'elzo-forms'), 'no' => __('No', 'elzo-forms')]));
+                            ?>)</option>
+                        <?php } ?>
+                        <option value="yes" <?php selected($submission_read_state, 'yes'); ?>><?php esc_html_e('Yes', 'elzo-forms'); ?></option>
+                        <option value="no" <?php selected($submission_read_state, 'no'); ?>><?php esc_html_e('No', 'elzo-forms'); ?></option>
+                    </select>
+                    <p class="description"><?php esc_html_e('New submissions are marked in the submissions list until they are opened. Turn this off if submissions are read elsewhere, for example in email or in an integration.', 'elzo-forms'); ?></p>
                 </td>
             </tr>
         </tbody>
@@ -136,9 +172,7 @@ defined('ABSPATH') || exit;
                     <select name="elzo_forms_form_settings[clear_form_after_submission]" id="elzo_forms_form_settings_clear_form_after_submission">
                         <?php if(empty($elzo_plugin_settings)){ ?>
                             <option value=""><?php echo esc_html__('Default', 'elzo-forms'); ?> (<?php
-                                echo !empty($form_global_settings['clear_form_after_submission']) && in_array($form_global_settings['clear_form_after_submission'], ['yes', 'no'])
-                                    ? esc_html(ucfirst($form_global_settings['clear_form_after_submission']))
-                                    : esc_html__('Yes', 'elzo-forms');
+                                echo esc_html($inherited_setting_label('clear_form_after_submission', ['yes' => __('Yes', 'elzo-forms'), 'no' => __('No', 'elzo-forms')]));
                             ?>)</option>
                         <?php } ?>
                         <option value="yes" <?php selected($clear_form_after_submission, 'yes'); ?>><?php esc_html_e('Yes', 'elzo-forms'); ?></option>
@@ -153,9 +187,7 @@ defined('ABSPATH') || exit;
                     <select name="elzo_forms_form_settings[hide_form_after_submission]" id="elzo_forms_form_settings_hide_form_after_submission">
                         <?php if(empty($elzo_plugin_settings)){ ?>
                             <option value=""><?php echo esc_html__('Default', 'elzo-forms'); ?> (<?php
-                                echo !empty($form_global_settings['hide_form_after_submission']) && in_array($form_global_settings['hide_form_after_submission'], ['yes', 'no'])
-                                    ? esc_html(ucfirst($form_global_settings['hide_form_after_submission']))
-                                    : esc_html__('No', 'elzo-forms');
+                                echo esc_html($inherited_setting_label('hide_form_after_submission', ['yes' => __('Yes', 'elzo-forms'), 'no' => __('No', 'elzo-forms')]));
                             ?>)</option>
                         <?php } ?>
                         <option value="yes" <?php selected($hide_form_after_submission, 'yes'); ?>><?php esc_html_e('Yes', 'elzo-forms'); ?></option>
@@ -198,9 +230,7 @@ defined('ABSPATH') || exit;
                     <select name="elzo_forms_form_settings[blocked_submission_action]" id="elzo_forms_form_settings_blocked_submission_action">
                         <?php if(empty($elzo_plugin_settings)){ // Display only on the form edit page ?>
                             <option value=""><?php echo esc_html__('Default', 'elzo-forms'); ?> (<?php
-                                echo !empty($form_global_settings['blocked_submission_action'])
-                                    ? esc_html(ucfirst($form_global_settings['blocked_submission_action']))
-                                    : esc_html__('Remove', 'elzo-forms');
+                                echo esc_html($inherited_setting_label('blocked_submission_action', ['remove' => __('Remove', 'elzo-forms'), 'spam' => __('Mark as Spam', 'elzo-forms')]));
                             ?>)</option>
                         <?php } ?>
                         <option value="remove" <?php selected($blocked_submission_action, 'remove'); ?>><?php esc_html_e('Remove', 'elzo-forms'); ?></option>
@@ -235,9 +265,7 @@ defined('ABSPATH') || exit;
                     <select name="elzo_forms_form_settings[form_submission_type]" id="elzo_forms_form_settings_form_submission_type">
                         <?php if(empty($elzo_plugin_settings)){ ?>
                             <option value=""><?php echo esc_html__('Default', 'elzo-forms'); ?> (<?php
-                                echo !empty($form_global_settings['form_submission_type'])
-                                    ? esc_html(ucfirst($form_global_settings['form_submission_type']))
-                                    : esc_html__('AJAX', 'elzo-forms');
+                                echo esc_html($inherited_setting_label('form_submission_type', ['ajax' => __('AJAX', 'elzo-forms'), 'standard' => __('Standard', 'elzo-forms')]));
                             ?>)</option>
                         <?php } ?>
                         <option value="ajax" <?php selected($form_submission_type, 'ajax'); ?>><?php esc_html_e('AJAX', 'elzo-forms'); ?></option>

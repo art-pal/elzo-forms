@@ -13,18 +13,21 @@ defined('ABSPATH') || exit;
             <?php foreach($fields as $field_index => $field){
                 $admin_label = !empty($field['admin_label']) ? $field['admin_label'] : '';
                 $label = !empty($field['label']) ? $field['label'] : '';
-                $value = !empty($field['value']) ? is_array($field['value']) ? implode(', ', $field['value']) : $field['value'] : '';
+                $value = $field['value'] ?? null;
             ?>
                 <tr class="elzo-submission-row">
                     <td class="elzo-submission-line-label">
                         <strong><?php
-                            /* translators: %s: Field label or ID. */
+                            /* translators: %s: Field ID or position, shown when the field has no label. */
                             echo esc_html($admin_label ?: $label) ?: sprintf(esc_html__('Field %s', 'elzo-forms'), esc_html($field['id']));
                         ?></strong>:
                     </td>
                     <td class="elzo-submission-line-value">
-                        <div class="elzo-submission-line-value-text"><?php echo $value ? esc_html($value) : '-'; ?></div>
-                        <?php if(is_array($field['value'])){ ?>
+                        <div class="elzo-submission-line-value-display"><?php
+                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Field renderers return safe HTML; see Field::render_submission_value().
+                            echo $field_presenter->render($field);
+                        ?></div>
+                        <?php if(is_array($value)){ ?>
                             <div class="elzo-submission-line-value-field elzo-forms-repeater-wrapper" style="display:none">
                                 <div id="elzo-forms-repeater-field-template" style="display:none">
                                     <div class="elzo-forms-repeater-item">
@@ -32,15 +35,15 @@ defined('ABSPATH') || exit;
                                     </div>
                                 </div>
                                 <div class="elzo-forms-repeater">
-                                    <?php foreach($field['value'] as $item){ ?>
+                                    <?php foreach($value as $item){ ?>
                                         <div class="elzo-forms-repeater-item">
-                                            <textarea class="elzo-forms-field-control elzo-submission-line-value-subfield" name="fields[<?php echo esc_attr($field_index); ?>][]"><?php echo esc_textarea($item); ?></textarea>
+                                            <textarea class="elzo-forms-field-control elzo-submission-line-value-subfield" name="fields[<?php echo esc_attr($field_index); ?>][]"><?php echo esc_textarea(\ElzoForms\Field\Field::submission_value_to_text($item)); ?></textarea>
                                         </div>
                                     <?php } ?>
                                 </div>
                             </div>
                         <?php } else { ?>
-                            <textarea class="elzo-submission-line-value-field elzo-forms-field-control" name="fields[<?php echo esc_attr($field_index); ?>]" style="display:none"><?php echo esc_textarea($value); ?></textarea>
+                            <textarea class="elzo-submission-line-value-field elzo-forms-field-control" name="fields[<?php echo esc_attr($field_index); ?>]" style="display:none"><?php echo esc_textarea(\ElzoForms\Field\Field::submission_value_to_text($value)); ?></textarea>
                         <?php } ?>
                     </td>
                 </tr>
@@ -70,7 +73,7 @@ defined('ABSPATH') || exit;
                 </em>
             </div>
             <?php if($fields){ ?>
-                <button type="button" class="button elzo-submission-edit-toggle" id="elzo-submission-edit-toggle" data-toggle-text="<?php echo esc_attr__('Close', 'elzo-forms'); ?>"><?php esc_html_e('Edit', 'elzo-forms'); ?></button>
+                <button type="button" class="button elzo-submission-edit-toggle" id="elzo-submission-edit-toggle" aria-expanded="false" data-toggle-text="<?php echo esc_attr__('Close', 'elzo-forms'); ?>"><?php esc_html_e('Edit', 'elzo-forms'); ?></button>
             <?php } ?>
         </div>
     <?php } ?>

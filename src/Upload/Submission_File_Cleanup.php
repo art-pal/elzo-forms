@@ -16,6 +16,15 @@ defined('ABSPATH') || exit;
 class Submission_File_Cleanup {
 
     /**
+     * Post meta marking a submission whose file values are references only.
+     *
+     * A submission restored from an export keeps the file URLs it was stored
+     * with as historical values, but it does not own the files behind them:
+     * they may belong to another submission on this site or to another site.
+     */
+    public const FILES_NOT_OWNED_META = '_elzo_forms_files_not_owned';
+
+    /**
      * Register cleanup handlers.
      */
     public static function init(): void {
@@ -34,6 +43,10 @@ class Submission_File_Cleanup {
     public static function handle_submission_deletion($post_id, $post = null): void {
         $post = $post instanceof \WP_Post ? $post : get_post((int) $post_id);
         if (!$post instanceof \WP_Post || $post->post_type !== 'elzo_submission') {
+            return;
+        }
+
+        if (get_post_meta((int) $post->ID, self::FILES_NOT_OWNED_META, true)) {
             return;
         }
 
@@ -60,8 +73,8 @@ class Submission_File_Cleanup {
     /**
      * Collect the stored file URLs of a set of submission fields.
      *
-     * Submissions do not record the field type, so the shape of the value is
-     * what identifies a file field: a file field always stores a list of URL
+     * Legacy submissions do not record the field type, so cleanup retains
+     * its conservative URL candidate collection: a file field always stores a list of URL
      * strings. That shape alone is not proof, which is why the caller resolves
      * every URL against the permanent upload root before deleting anything.
      *

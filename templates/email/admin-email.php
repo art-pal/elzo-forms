@@ -12,11 +12,13 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.2.0
  *
  * @var array $submission_data Submission data including fields
+ * @var \ElzoForms\Submission\Submission_Field_Presenter $field_presenter Shared presenter configured for email
  * @var string $email_message Custom email message
  * @var array $email_buttons Action buttons rendered under the submission table
+ * @var bool $email_fields_in_message Whether the all-fields variable supplied the table (optional).
  * @var int $form_id ID of the submitted form
  */
 
@@ -24,6 +26,14 @@
 defined('ABSPATH') || exit;
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- This template is loaded via Template_Loader::load_template() (function scope), so variables here are function-scoped, not globals.
+
+// Keep direct template calls with the historical argument set working.
+if (!isset($field_presenter)) {
+    $field_presenter = new \ElzoForms\Submission\Submission_Field_Presenter([
+        'channel' => 'email',
+        'form_id' => $form_id,
+    ]);
+}
 
 ?>
 <div style="background-color:#f5f5f5;padding:30px 20px">
@@ -34,23 +44,16 @@ defined('ABSPATH') || exit;
         <?php if(!empty($email_message)){ ?>
             <div style="margin-top:20px"><?php echo wp_kses_post($email_message); ?></div>
         <?php } ?>
-        <?php if(!empty($submission_data['fields'])){ ?>
+        <?php if(empty($email_fields_in_message) && !empty($submission_data['fields'])){ ?>
             <div style="margin-top:20px;">
-                <table style="width:100%;border-collapse:collapse;">
-                    <?php foreach($submission_data['fields'] as $field){
-                        // Apply filter to each field
-                        $field = apply_filters('elzo_forms_admin_email_field', $field);
-
-                        $admin_label = !empty($field['admin_label']) ? $field['admin_label'] : '';
-                        $label = !empty($field['label']) ? $field['label'] : '';
-                        $value = !empty($field['value']) ? is_array($field['value']) ? implode(', ', $field['value']) : $field['value'] : '-';
-                    ?>
-                        <tr>
-                            <td style="padding:10px;border:1px solid #ddd;width:100px;padding-right:15px"><?php echo esc_html($admin_label ? $admin_label : $label); ?></td>
-                            <td style="padding:10px;border:1px solid #ddd;"><?php echo esc_html($value); ?></td>
-                        </tr>
-                    <?php } ?>
-                </table>
+                <?php
+                $fields_table = \ElzoForms\Utilities\Template_Loader::get_template('email/submission-fields.php', [
+                    'submission_data' => $submission_data,
+                    'field_presenter' => $field_presenter,
+                ]);
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- The shared table escapes labels and uses the email presenter.
+                echo $fields_table;
+                ?>
             </div>
         <?php } ?>
         <?php if(!empty($email_buttons)){ ?>

@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.2.0
  *
  * @var array $d Field data prepared for rendering
  */
@@ -41,7 +41,7 @@ defined('ABSPATH') || exit;
 ?>
 <?php if($has_custom_dropdown){ ?>
     <div class="elzo-forms-select-wrapper elzo-forms-custom-select-wrapper">
-        <select name="<?php echo esc_attr($name); ?>" class="<?php echo esc_attr($class); ?>" id="<?php echo esc_attr($id); ?>" <?php echo $multiple ? 'multiple="multiple"' : ''; ?> <?php echo $required && !$logic_rules ? 'required' : ''; ?> style="display:none">
+        <select name="<?php echo esc_attr($name); ?>" class="<?php echo esc_attr($class); ?>" id="<?php echo esc_attr($id); ?>" <?php if (!empty($described_by)) { ?>aria-describedby="<?php echo esc_attr($described_by); ?>"<?php } ?> <?php echo $multiple ? 'multiple="multiple"' : ''; ?> <?php echo $required && !$logic_rules ? 'required' : ''; ?> style="display:none">
             <?php if($placeholder){ ?>
                 <option value="" <?php echo !$value && !$multiple ? 'selected=""' : ''; ?> <?php echo $required ? 'disabled=""' : ''; ?> data-placeholder="true" ><?php echo esc_html($placeholder); ?></option>
             <?php } ?>
@@ -72,7 +72,9 @@ defined('ABSPATH') || exit;
                 <div class="elzo-forms-custom-select-facade elzo-forms-field-multiple-select-facade elzo-forms-field-control elzo-forms-field-select" <?php echo $value ? '' : 'style="display:none"'; ?> >
                     <?php if($value && is_array($value)){
                         foreach($value as $value_item):
-                            $value_label_index = array_search($value_item, array_column($options, 'value'));
+                            $value_label_index = is_scalar($value_item)
+                                ? array_search((string) $value_item, array_map('strval', array_column($options, 'value')), true)
+                                : false;
                             $value_label = $value_label_index !== false ? ($options[$value_label_index]['label'] ?: $options[$value_label_index]['value']) : $value_item;
                         ?><button type="button" class="elzo-forms-custom-select-facade-item" data-value="<?php echo esc_attr($value_item); ?>">
                             <?php echo wp_kses_post($value_label); ?> &times;
@@ -85,7 +87,7 @@ defined('ABSPATH') || exit;
     </div>
 <?php } else { ?>
     <div class="elzo-forms-select-wrapper">
-        <select name="<?php echo esc_attr($name); ?>" class="<?php echo esc_attr($class); ?>" id="<?php echo esc_attr($id); ?>" <?php echo $required && !$logic_rules ? 'required' : ''; ?>>
+        <select name="<?php echo esc_attr($name); ?>" class="<?php echo esc_attr($class); ?>" id="<?php echo esc_attr($id); ?>" <?php if (!empty($described_by)) { ?>aria-describedby="<?php echo esc_attr($described_by); ?>"<?php } ?> <?php echo $required && !$logic_rules ? 'required' : ''; ?>>
             <?php if($placeholder){ ?>
                 <option value="" <?php echo !$value ? 'selected=""' : ''; ?> <?php echo $required ? 'disabled=""' : ''; ?> data-placeholder="true" ><?php echo esc_html($placeholder); ?></option>
             <?php } ?>

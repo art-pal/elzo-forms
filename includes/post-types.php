@@ -99,3 +99,18 @@ $submission_args = array(
 );
 
 register_post_type('elzo_submission', $submission_args);
+
+// Post status: Spam
+// Registered with the post types, in every request: queries match registered
+// statuses only, so spam submissions would otherwise be invisible outside
+// wp-admin, for instance to exports and imports run by WP-CLI or cron.
+
+register_post_status('spam', array(
+    'label'                     => _x('Spam', 'post status', 'elzo-forms'),
+    'public'                    => false,
+    'exclude_from_search'       => true,
+    'show_in_admin_all_list'    => false,
+    'show_in_admin_status_list' => true,
+    /* translators: %s: Number of spam submissions. */
+    'label_count'               => _n_noop('Spam <span class="count">(%s)</span>', 'Spam <span class="count">(%s)</span>', 'elzo-forms'),
+));

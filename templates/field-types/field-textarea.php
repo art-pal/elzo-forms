@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.0.0
+ * @version     1.2.0
  *
  * @var string $name        Field name
  * @var string $class       CSS classes
@@ -28,4 +28,4 @@
 defined('ABSPATH') || exit;
 
 ?>
-<textarea name="<?php echo esc_attr($name); ?>" class="<?php echo esc_attr($class); ?>" id="<?php echo esc_attr($id); ?>" placeholder="<?php echo esc_attr($placeholder); ?>" <?php echo $required && !$logic_rules ? 'required' : ''; ?><?php echo !empty($max_length) ? ' maxlength="' . esc_attr((string) $max_length) . '"' : ''; ?> rows="<?php echo esc_attr($rows_amount); ?>"><?php echo esc_textarea($value); ?></textarea>
+<textarea name="<?php echo esc_attr($name); ?>" class="<?php echo esc_attr($class); ?>" id="<?php echo esc_attr($id); ?>" placeholder="<?php echo esc_attr($placeholder); ?>" <?php if (!empty($described_by)) { ?>aria-describedby="<?php echo esc_attr($described_by); ?>"<?php } ?> <?php echo $required && !$logic_rules ? 'required' : ''; ?><?php echo !empty($max_length) ? ' maxlength="' . esc_attr((string) $max_length) . '"' : ''; ?> rows="<?php echo esc_attr($rows_amount); ?>"><?php echo esc_textarea($value); ?></textarea>

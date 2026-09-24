@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.1.0
+ * @version     1.2.0
  *
  * @var array $d Field data prepared for rendering
  */
@@ -64,13 +64,13 @@ defined('ABSPATH') || exit;
     <div class="elzo-forms-file-drop-area-upload-list">
         
     </div>
-    <?php if($style == 'drag-and-drop'){ ?>
+    <?php if($style === 'drag-and-drop'){ ?>
         <div class="elzo-forms-file-drop-area-text"><?php echo esc_html($file_upload_text); ?></div>
         <div class="elzo-forms-file-drop-area-sub-text elzo-forms-text-825"><?php echo esc_html(implode('. ', array_filter([$file_types_text, $file_size_text]))); ?></div>
     <?php } ?>
-    <input type="file" id="<?php echo esc_attr((string) ($id ?? '')); ?>" class="elzo-forms-file-upload-input" <?php echo $multiple ? 'multiple' : ''; ?> <?php echo $allowed_file_types ? 'accept="' . esc_attr((string) $allowed_file_types) . '"' : ''; ?> data-form-id="<?php echo esc_attr((string) ($form_id ?? '')); ?>" data-field-id="<?php echo esc_attr((string) ($field_id ?? '')); ?>" data-max-file-size="<?php echo esc_attr((string) ($max_file_size ?? '')); ?>" data-max-chunk="<?php echo esc_attr((string) ($max_chunk_size ?? '')); ?>" style="display:none">
+    <input type="file" id="<?php echo esc_attr((string) ($id ?? '')); ?>" class="elzo-forms-file-upload-input" <?php if (!empty($described_by)) { ?>aria-describedby="<?php echo esc_attr($described_by); ?>"<?php } ?> <?php echo $multiple ? 'multiple' : ''; ?> <?php echo $allowed_file_types ? 'accept="' . esc_attr((string) $allowed_file_types) . '"' : ''; ?> data-form-id="<?php echo esc_attr((string) ($form_id ?? '')); ?>" data-field-id="<?php echo esc_attr((string) ($field_id ?? '')); ?>" data-max-file-size="<?php echo esc_attr((string) ($max_file_size ?? '')); ?>" data-max-chunk="<?php echo esc_attr((string) ($max_chunk_size ?? '')); ?>" style="display:none">
     <label for="<?php echo esc_attr((string) ($id ?? '')); ?>" class="elzo-forms-file-drop-area-button"><?php echo esc_html($file_upload_button_text); ?></label>
-    <?php if($style != 'drag-and-drop'){ ?>
+    <?php if($style !== 'drag-and-drop'){ ?>
         <span class="elzo-forms-file-drop-area-sub-text elzo-forms-text-825"><?php echo esc_html(implode('. ', array_filter([$file_types_text, $file_size_text]))); ?></span>
     <?php } ?>
 </div>

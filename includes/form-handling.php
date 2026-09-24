@@ -95,7 +95,7 @@ if(!$user_ip) {
     ]);
 }
 
-if(in_array($user_ip, $blocked_ips)){
+if(in_array($user_ip, $blocked_ips, true)){
     // Check blocked action
     if($blocked_action === 'spam'){
         // Set spam flag
@@ -312,7 +312,7 @@ foreach($steps as $step_index => $step){
         // Make sure visible required field is not empty
         if($field->is_required() && $is_empty) {
             wp_send_json_error([
-                /* translators: %s: Required field title. */
+                /* translators: %s: Field title in bold. */
                 'message' => sprintf(__('Field %s is required','elzo-forms'), '<strong>"' . esc_html($field->get_title()) . '"</strong>'),
             ]);
         }
@@ -344,6 +344,7 @@ foreach($validated_submission_fields as $validated_submission_field){
     $submission_object_fields[] = [
         'id' => $validated_submission_field['id'],
         'field_key' => sanitize_text_field((string) $field->get('field_key', '')),
+        'type' => $field->get_type(),
         'admin_label' => $field->get_admin_label(),
         'label' => $field->get_label() ?: $field->get_placeholder(),
         'value' => $submission_field_value,
@@ -431,6 +432,7 @@ if($spam){
 $email_settings = [
     'email_notifications' => (string) $form->get_setting('email_notifications'),
     'email_notification_recipients' => $form->get_setting('email_notification_recipients', get_option('admin_email')),
+    'email_notification_reply_to' => (string) $form->get_setting('email_notification_reply_to', ''),
 ];
 $email_settings = apply_filters('elzo_forms_submission_email_settings', $email_settings, $form, $submission, (int) $submission_post_id);
 
@@ -438,23 +440,46 @@ $email_notifications = isset($email_settings['email_notifications'])
     ? sanitize_key((string) $email_settings['email_notifications'])
     : 'no';
 
-if($email_notifications === 'yes'){
-    // Get email settings
+$notification_templates = null;
+if ($email_notifications === 'yes') {
     $email_recipients = $email_settings['email_notification_recipients'] ?? get_option('admin_email');
     if (is_array($email_recipients)) {
         $email_recipients = implode(',', array_map('strval', $email_recipients));
     }
+    $subject_template = $form->get_text('email_notification_subject');
+    $legacy_subject = !(new \ElzoForms\Variables\ValueResolver())->contains_reference($subject_template);
+    $notification_templates = \ElzoForms\Variables\Notification_Templates::prepare(
+        $form, $submission, (string) $email_recipients,
+        $subject_template, $form->get_text('email_notification_message'),
+        (string) ($email_settings['email_notification_reply_to'] ?? '')
+    );
+    if (!$notification_templates->is_valid()) {
+        // A notification failure must not undo a successfully stored submission.
+        do_action('elzo_forms_notification_template_failed', $notification_templates->get_errors(), $form, $submission);
+    }
+    if ($notification_templates->get_warnings()) {
+        do_action('elzo_forms_notification_template_warning', $notification_templates->get_warnings(), $form, $submission);
+    }
+}
 
-    $email_to_list = preg_split('/[\n,]+/', (string) $email_recipients);
-    $email_to_list = array_values(array_filter(array_map('trim', (array) $email_to_list), static function ($email) {
-        return $email !== '';
-    }));
+if ($notification_templates && $notification_templates->is_valid()) {
+    $prepared_notification = $notification_templates->get_value();
+    $email_to_list = $prepared_notification['recipients'];
     $email_to = count($email_to_list) === 1 ? $email_to_list[0] : $email_to_list;
-    $email_subject = sanitize_text_field($form->get_text('email_notification_subject') . (!empty($primary_field_value) ? ' ('.$primary_field_value.')' : '') . ' | #' . $submission_post_id);
-    $email_message = $form->get_text('email_notification_message');
+    $email_subject = $prepared_notification['subject'];
+    if ($legacy_subject) {
+        $email_subject = sanitize_text_field($email_subject . (!empty($primary_field_value) ? ' (' . $primary_field_value . ')' : '') . ' | #' . $submission_post_id);
+    }
+    $email_message = $prepared_notification['message'];
     $email_headers = [
         'Content-Type: text/html; charset=UTF-8',
     ];
+
+    // A Reply-To the submitter can be answered directly; it is left out when
+    // the configured address or variable produced nothing usable.
+    if (!empty($prepared_notification['reply_to'])) {
+        $email_headers[] = 'Reply-To: ' . $prepared_notification['reply_to'];
+    }
 
     // Email buttons
     $email_buttons = [
@@ -467,12 +492,21 @@ if($email_notifications === 'yes'){
     // Get submission data for email template
     $submission_data = $submission->to_array();
 
+    $email_field_presenter = new \ElzoForms\Submission\Submission_Field_Presenter([
+        'channel' => 'email',
+        'form_id' => $form_id,
+        'form' => $form,
+        'submission_id' => (int) $submission_post_id,
+    ]);
+
     // Render the email through the template loader so a theme can override
     // email/admin-email.php, and so the template only sees the arguments passed
     // here rather than every local of the enclosing submission handler.
     $email_template = \ElzoForms\Utilities\Template_Loader::get_template('email/admin-email.php', [
         'submission_data' => $submission_data,
+        'field_presenter' => $email_field_presenter,
         'email_message' => $email_message,
+        'email_fields_in_message' => $prepared_notification['fields_in_message'],
         'email_buttons' => $email_buttons,
         'form_id' => $form_id,
     ]);

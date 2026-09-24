@@ -12,9 +12,13 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.1.0
+ * @version     1.2.0
  *
- * @var string $form_instance_suffix DOM ID suffix for repeated form instances.
+ * @var \ElzoForms\Form\Form_Instance $form_instance Rendered instance; namespaces every HTML ID.
+ * @var string $form_instance_id Instance ID.
+ * @var string $form_attr_id HTML ID of the form element.
+ * @var string $form_nonce_id HTML ID of the nonce input.
+ * @var string $form_instance_suffix Deprecated: ID suffix of Elzo Forms 1.1 for repeated forms.
  */
 
 // Exit if accessed directly
@@ -35,8 +39,8 @@ defined('ABSPATH') || exit;
             </div>
         <?php } ?>
     <?php endif; ?>
-    <form action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" class="<?php echo esc_attr($form_attr_class); ?>" id="<?php echo esc_attr($form_attr_id); ?>"<?php echo wp_kses($form_data_attrs_string, []); ?> novalidate>
-        <input type="hidden" id="<?php echo esc_attr('elzo_forms_nonce' . ($form_instance_suffix ?? '')); ?>" name="elzo_forms_nonce" value="<?php echo esc_attr(wp_create_nonce('elzo_forms_action')); ?>">
+    <form action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" class="<?php echo esc_attr($form_attr_class); ?>" id="<?php echo esc_attr($form_attr_id); ?>" data-ef-instance="<?php echo esc_attr($form_instance_id); ?>"<?php echo wp_kses($form_data_attrs_string, []); ?> novalidate>
+        <input type="hidden" id="<?php echo esc_attr($form_nonce_id); ?>" name="elzo_forms_nonce" value="<?php echo esc_attr(wp_create_nonce('elzo_forms_action')); ?>">
         <?php wp_referer_field(); ?>
         
         <input type="hidden" name="action" value="elzo_forms_submit">
@@ -51,7 +55,7 @@ defined('ABSPATH') || exit;
                     // Load step template
                     \ElzoForms\Utilities\Template_Loader::load_template('step.php', compact(
                         'step', 'step_index', 'steps_total', 'form_id', 'form_settings', 'texts_settings',
-                        'form_instance_suffix'
+                        'form_instance', 'form_instance_suffix'
                     ));
                 } ?>
             <?php } ?>

@@ -99,13 +99,13 @@ class Field_Select extends Field {
     private function validate_options($value) {
         // Validate against available options
         $options = $this->get('options', []);
-        $option_values = array_column($options, 'value');
+        $option_values = array_map('strval', array_column($options, 'value'));
 
         if (!empty($value)) {
             $values_to_check = ($this->is_multiple() && is_array($value)) ? $value : [$value];
 
             foreach ($values_to_check as $val) {
-                if (!in_array($val, $option_values, true)) {
+                if (!is_scalar($val) || !in_array((string) $val, $option_values, true)) {
                     $val_display = is_scalar($val) ? (string) $val : wp_json_encode($val);
                     return new \WP_Error(
                         'invalid_option',
@@ -146,6 +146,7 @@ class Field_Select extends Field {
         $multiple = $this->is_multiple();
         $search = !empty($this->get('search'));
         $value = $data['value'];
+        $option_values = array_map('strval', array_column($options, 'value'));
 
         // Convert value into string if not multiple
         if (!$multiple && is_array($value)) {
@@ -153,15 +154,23 @@ class Field_Select extends Field {
         }
 
         // Calculate value label for single select
-        $value_label_index = $value && !$multiple ? array_search($value, array_column($options, 'value')) : false;
+        $value_label_index = $value && !$multiple && is_scalar($value) ? array_search((string) $value, $option_values, true) : false;
         $value_label = $value_label_index !== false ? ($options[$value_label_index]['label'] ?: $options[$value_label_index]['value']) : '';
 
         // Determine if custom dropdown is needed
         $has_custom_dropdown = $multiple || $search;
 
         // Loop through options and add 'active' flag
+        $selected_values = is_array($value)
+            ? array_map(static function ($selected_value): string {
+                return is_scalar($selected_value) ? (string) $selected_value : '';
+            }, $value)
+            : [];
         foreach($options as $option_index => $option){
-            $options[$option_index]['active'] = is_array($value) ? in_array($option['value'], $value) : $value == $option['value'];
+            $option_value = isset($option['value']) && is_scalar($option['value']) ? (string) $option['value'] : '';
+            $options[$option_index]['active'] = is_array($value)
+                ? in_array($option_value, $selected_values, true)
+                : is_scalar($value) && (string) $value === $option_value;
         }
 
         $data['options'] = $options;

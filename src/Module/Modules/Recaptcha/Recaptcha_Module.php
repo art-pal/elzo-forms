@@ -84,6 +84,7 @@ class Recaptcha_Module extends Module {
                 'label' => __('Secret Key', 'elzo-forms'),
                 'description' => __('Your reCAPTCHA v3 secret key (private). Keep this secure!', 'elzo-forms'),
                 'default' => '',
+                'sensitive' => true,
             ],
             'score_threshold' => [
                 'type' => 'select',

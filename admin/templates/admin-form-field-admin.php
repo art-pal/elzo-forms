@@ -35,6 +35,7 @@
         <div class="elzo-forms-field-control-group">
             <label for="elzo-forms-field-key-<?php echo esc_attr($field_id); ?>" class="elzo-forms-field-control-label"><?php esc_html_e('Field Key', 'elzo-forms'); ?></label>
             <div class="elzo-forms-field-control-guideline"><?php esc_html_e('Technical key for integrations and internal references. Auto-generated as a slug and unique per form.', 'elzo-forms'); ?></div>
+            <div class="elzo-forms-field-control-guideline"><?php esc_html_e('Used by variables and integrations. Changing this key may break existing references.', 'elzo-forms'); ?></div>
             <input type="text" name="elzo_form_fields[<?php echo esc_attr($step_index); ?>][fields][<?php echo esc_attr($field_index); ?>][field_key]" value="<?php echo esc_attr($field_key); ?>" class="elzo-forms-field-control elzo-forms-field-key" id="elzo-forms-field-key-<?php echo esc_attr($field_id); ?>" data-field-key-manual="<?php echo $field_key !== '' ? '1' : '0'; ?>" placeholder="<?php esc_attr_e('Auto-generated', 'elzo-forms'); ?>" maxlength="64">
         </div>
     </div>

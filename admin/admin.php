@@ -136,7 +136,7 @@ function elzo_forms_render_form_compatibility_notice(): void {
         return;
     }
 
-    $payload = json_decode((string) $post->post_content, true);
+    $payload = \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $post->post_content);
     if (!is_array($payload)) {
         return;
     }
@@ -158,6 +158,7 @@ function elzo_forms_render_form_compatibility_notice(): void {
 add_action('admin_notices', 'elzo_forms_render_form_compatibility_notice');
 
 // Fix page title based on current tab
+// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- The filter passes both title arguments.
 function elzo_forms_fix_settings_page_title($admin_title, $title) {
     $screen = get_current_screen();
     $post_type = elzo_forms_get_admin_query_slug('post_type');
@@ -221,23 +222,66 @@ function elzo_forms_sanitize_css_color_value($value) {
 }
 
 function elzo_forms_sanitize_email_recipients($value) {
-    $value = sanitize_textarea_field((string) $value);
-    if ($value === '') {
-        return '';
-    }
-
-    $parts = preg_split('/[,\n]+/', $value);
-    $emails = [];
-
-    foreach ((array) $parts as $email) {
-        $email = sanitize_email(trim($email));
-        if ($email !== '') {
-            $emails[$email] = $email;
-        }
-    }
-
-    return implode(', ', array_values($emails));
+    // Keep invalid input visible so validation can report it instead of dropping it.
+    return \ElzoForms\Variables\Recipient_Templates::normalize((string) $value);
 }
+
+function elzo_forms_notification_option_draft_key(string $option): string {
+    return 'elzo_forms_variables_option_' . get_current_user_id() . '_' . $option;
+}
+
+function elzo_forms_get_notification_option_for_editor(string $option): array {
+    $draft = get_transient(elzo_forms_notification_option_draft_key($option));
+    $value = is_array($draft) ? $draft : get_option($option, []);
+    return is_array($value) ? $value : [];
+}
+
+function elzo_forms_validate_notification_option($value, string $option) {
+    if (!is_array($value)) {
+        return $value;
+    }
+    $errors = \ElzoForms\Variables\Notification_Validation::validate($value);
+    $draft_key = elzo_forms_notification_option_draft_key($option);
+    if (!$errors) {
+        delete_transient($draft_key);
+        return $value;
+    }
+    set_transient($draft_key, $value, DAY_IN_SECONDS);
+    add_settings_error($option, 'notification_variables_invalid', __('These notification changes were not applied. Correct the variable errors below and save again; the proposed values remain in the editor.', 'elzo-forms'));
+    foreach ($errors as $index => $error) {
+        add_settings_error($option, 'notification_variable_' . $index, $error['message']);
+    }
+    return get_option($option, []);
+}
+
+function elzo_forms_notification_form_draft_key(int $post_id): string {
+    return 'elzo_forms_variables_form_' . get_current_user_id() . '_' . $post_id;
+}
+
+function elzo_forms_render_notification_variables_notice(): void {
+    $post_id = elzo_forms_get_admin_query_absint('post');
+    if (!$post_id || get_post_type($post_id) !== 'elzo_form' || !current_user_can('edit_post', $post_id)) {
+        return;
+    }
+    $draft = get_transient(elzo_forms_notification_form_draft_key($post_id));
+    if (!is_array($draft) || empty($draft['errors'])) {
+        return;
+    }
+    echo '<div class="notice notice-error"><p>' . esc_html__('The form data was not saved because notification variables are invalid. The proposed changes remain in the editor; correct the errors and save again.', 'elzo-forms') . '</p><ul>';
+    foreach ($draft['errors'] as $error) {
+        echo '<li>' . esc_html($error['message']) . '</li>';
+    }
+    echo '</ul></div>';
+}
+add_action('admin_notices', 'elzo_forms_render_notification_variables_notice');
+
+function elzo_forms_notification_variables_redirect(string $location, int $post_id = 0): string {
+    if (get_transient(elzo_forms_notification_form_draft_key($post_id))) {
+        return remove_query_arg('message', $location);
+    }
+    return $location;
+}
+add_filter('redirect_post_location', 'elzo_forms_notification_variables_redirect', 10, 2);
 
 function elzo_forms_get_settings_sanitization_rules($option_name, $value = null) {
     $rules = [];
@@ -276,6 +320,12 @@ function elzo_forms_get_settings_sanitization_rules($option_name, $value = null)
                 'default' => \ElzoForms\Services\Settings::get_default_settings('email_notifications'),
             ],
             'email_notification_recipients' => 'elzo_forms_sanitize_email_recipients',
+            'email_notification_reply_to' => 'elzo_forms_sanitize_email_recipients',
+            'submission_read_state' => [
+                'type' => 'enum',
+                'allowed' => ['yes', 'no'],
+                'default' => \ElzoForms\Services\Settings::get_default_settings('submission_read_state'),
+            ],
             'blocked_ips' => 'textarea',
             'blocked_words' => 'textarea',
             'blocked_submission_action' => [
@@ -461,11 +511,11 @@ function elzo_forms_sanitize_general_settings($value) {
 }
 
 function elzo_forms_sanitize_form_settings($value) {
-    return elzo_forms_sanitize_settings_option($value, 'elzo_forms_form_settings');
+    return elzo_forms_validate_notification_option(elzo_forms_sanitize_settings_option($value, 'elzo_forms_form_settings'), 'elzo_forms_form_settings');
 }
 
 function elzo_forms_sanitize_texts_settings($value) {
-    return elzo_forms_sanitize_settings_option($value, 'elzo_forms_texts_settings');
+    return elzo_forms_validate_notification_option(elzo_forms_sanitize_settings_option($value, 'elzo_forms_texts_settings'), 'elzo_forms_texts_settings');
 }
 
 function elzo_forms_sanitize_style_settings($value) {
@@ -519,6 +569,7 @@ function elzo_forms_register_settings() {
 add_action('admin_init', 'elzo_forms_register_settings');
 
 // Handle the update of 'elzo_forms_style_settings'
+// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- The option hook passes both values.
 function elzo_forms_style_settings_updated($old_value, $new_value) {
     // Update and compile the plugin styles
     elzo_forms_update_and_compile_styles();
@@ -526,6 +577,7 @@ function elzo_forms_style_settings_updated($old_value, $new_value) {
 add_action('update_option_elzo_forms_style_settings', 'elzo_forms_style_settings_updated', 10, 2);
 
 // Handle the initial add of 'elzo_forms_style_settings'
+// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- The option hook passes both values.
 function elzo_forms_style_settings_added($option, $value) {
     elzo_forms_update_and_compile_styles();
 }
@@ -586,8 +638,14 @@ function elzo_forms_settings_page() {
 
 // Register the plugin's admin scripts and styles
 function elzo_forms_admin_enqueue_scripts() {
-    // Enqueue the WordPress media uploader and thickbox scripts
-    wp_enqueue_script('tiny_mce', includes_url('js/tinymce/tinymce.min.js'), array(), ELZO_FORMS_VERSION, true);
+    $screen = get_current_screen();
+    $is_form_editor = $screen && $screen->post_type === 'elzo_form' && $screen->base === 'post';
+    $is_variables_settings = $screen && $screen->id === 'elzo_form_page_elzo-forms-settings'
+        && in_array(elzo_forms_get_admin_query_slug('tab', 'form'), ['form', 'texts'], true);
+    $load_editor = $is_form_editor || $is_variables_settings;
+    if ($load_editor) {
+        wp_enqueue_editor();
+    }
 
     // Enqueue the WordPress drag-and-drop script
     wp_enqueue_script('jquery-ui-sortable');
@@ -595,7 +653,6 @@ function elzo_forms_admin_enqueue_scripts() {
     // Enqueue the WordPress color picker script
     wp_enqueue_script('wp-color-picker');
 
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     $is_submission_screen = $screen
         && $screen->post_type === 'elzo_submission'
         && in_array($screen->base, array('post', 'edit'), true);
@@ -615,9 +672,32 @@ function elzo_forms_admin_enqueue_scripts() {
     }
 
     // Enqueue the plugin's admin scripts and styles
-    wp_enqueue_style('elzo-forms-admin', plugin_dir_url(__DIR__) . 'assets/css/elzo-forms-admin.css', array(), ELZO_FORMS_VERSION, 'all');
+    wp_enqueue_style('elzo-forms-admin', plugin_dir_url(__DIR__) . 'assets/css/elzo-forms-admin.css', array(), defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? (string) filemtime(dirname(__DIR__) . '/assets/css/elzo-forms-admin.css') : ELZO_FORMS_VERSION, 'all');
     wp_enqueue_style('elzo-forms-admin-icons', plugin_dir_url(__DIR__) . 'assets/icons/elzo-forms-icons.css', array(), ELZO_FORMS_VERSION, 'all');
-    wp_enqueue_script('elzo-forms-admin', plugin_dir_url(__DIR__) . 'assets/js/elzo-forms-admin.js', array(), ELZO_FORMS_VERSION, true);
+    wp_enqueue_script('elzo-forms-admin', plugin_dir_url(__DIR__) . 'assets/js/elzo-forms-admin.js', $load_editor ? ['wp-tinymce'] : [], defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? (string) filemtime(dirname(__DIR__) . '/assets/js/elzo-forms-admin.js') : ELZO_FORMS_VERSION, true);
+
+    if ($load_editor) {
+        wp_enqueue_style('elzo-forms-variables', plugin_dir_url(__DIR__) . 'assets/css/elzo-forms-variables.css', array('elzo-forms-admin'), defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? (string) filemtime(dirname(__DIR__) . '/assets/css/elzo-forms-variables.css') : ELZO_FORMS_VERSION);
+        wp_enqueue_script('elzo-forms-variables', plugin_dir_url(__DIR__) . 'assets/js/elzo-forms-variables.js', array('elzo-forms-admin', 'wp-tinymce'), defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? (string) filemtime(dirname(__DIR__) . '/assets/js/elzo-forms-variables.js') : ELZO_FORMS_VERSION, true);
+        wp_localize_script('elzo-forms-variables', 'ElzoFormsVariablesConfig', array(
+            'items' => \ElzoForms\Variables\Catalog::items(),
+            'texts' => array(
+                'variables' => __('Variables', 'elzo-forms'),
+                'template' => __('Template', 'elzo-forms'),
+                'editTemplate' => __('Edit as text', 'elzo-forms'),
+                'visualEditor' => __('Visual editor', 'elzo-forms'),
+                'close' => __('Close', 'elzo-forms'),
+                'search' => __('Search variables', 'elzo-forms'),
+                'noVariables' => __('No variables found.', 'elzo-forms'),
+                'loading' => __('Loading variables...', 'elzo-forms'),
+                'loadFailed' => __('Variables could not be loaded. Close the picker and try again.', 'elzo-forms'),
+                'customPath' => __('Enter a variable path', 'elzo-forms'),
+                'variablePath' => __('Variable path', 'elzo-forms'),
+                'insert' => __('Insert', 'elzo-forms'),
+                'fields' => __('Fields', 'elzo-forms'),
+            ),
+        ));
+    }
     // Pass nonce and other data to admin script
     wp_localize_script('elzo-forms-admin', 'ElzoFormsAdmin', array(
         'nonce' => wp_create_nonce('elzo_forms_admin'),
@@ -631,6 +711,8 @@ function elzo_forms_admin_enqueue_scripts() {
          */
         'logicLabelMaxLength' => apply_filters('elzo_forms_logic_label_max_length', 50),
         'selectFieldPlaceholder' => __('Select a field', 'elzo-forms'),
+        'logicValueUnavailable' => __('Not available for this field type', 'elzo-forms'),
+        'logicOperatorUnavailable' => __('Not available', 'elzo-forms'),
         // Count operators compare a number of values, so their value input is
         // a number rather than the free text every other operator takes.
         'logicCountOperators' => \ElzoForms\Utilities\Conditional_Logic::get_count_operators(),
@@ -695,6 +777,7 @@ function elzo_forms_meta_box() {
 add_action('add_meta_boxes', 'elzo_forms_meta_box');
 
 // Render the Form Data meta box
+// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- WordPress passes the post to meta box callbacks.
 function elzo_forms_data_meta_box_callback($post) {
     include plugin_dir_path(__DIR__) . 'admin/templates/admin-form-meta-box-content.php';
 }
@@ -719,6 +802,11 @@ function elzo_submission_data_meta_box_callback($post) {
         // Apply filter to each field
         $fields[$field_index] = apply_filters('elzo_forms_admin_submission_field', $fields[$field_index]);
     }
+
+    $field_presenter = new \ElzoForms\Submission\Submission_Field_Presenter([
+        'submission_id' => $submission_id,
+        'form_id' => $form_id,
+    ]);
 
     // Include the meta box content template
     include plugin_dir_path(__DIR__) . 'admin/templates/admin-submission-data-meta-box-content.php';
@@ -960,109 +1048,29 @@ function elzo_forms_update_and_compile_styles() {
 
 /**
  * Build preferred source string for field key generation.
+ *
+ * @see \ElzoForms\Form\Form_Data_Normalizer::get_field_key_source()
  */
 function elzo_forms_get_field_key_source(array $field): string {
-    foreach (['field_key', 'admin_label', 'label', 'placeholder'] as $candidate_key) {
-        $candidate = isset($field[$candidate_key]) ? trim((string) $field[$candidate_key]) : '';
-        if ($candidate !== '') {
-            return $candidate;
-        }
-    }
-
-    $field_id = isset($field['id']) ? sanitize_text_field((string) $field['id']) : '';
-
-    return $field_id !== '' ? 'field-' . $field_id : 'field';
+    return \ElzoForms\Form\Form_Data_Normalizer::get_field_key_source($field);
 }
 
 /**
  * Normalize field_key values across all fields in the form and ensure uniqueness.
+ *
+ * @see \ElzoForms\Form\Form_Data_Normalizer::normalize_field_keys()
  */
 function elzo_forms_normalize_field_keys(array $steps): array {
-    $used_keys = [];
-
-    foreach ($steps as $step_index => $step) {
-        if (empty($step['fields']) || !is_array($step['fields'])) {
-            continue;
-        }
-
-        foreach ($step['fields'] as $field_index => $field) {
-            if (!is_array($field)) {
-                continue;
-            }
-
-            $field_key_source = elzo_forms_get_field_key_source($field);
-            $steps[$step_index]['fields'][$field_index]['field_key'] = \ElzoForms\Utilities\Helpers::unique_field_key($field_key_source, $used_keys);
-        }
-    }
-
-    return $steps;
+    return \ElzoForms\Form\Form_Data_Normalizer::normalize_field_keys($steps);
 }
 
 /**
  * Drop conditional logic rules that point at a field the form no longer holds.
  *
- * A dangling reference does not simply stop matching: Conditional_Logic compares
- * the missing field against an empty string, so "is not" style operators start
- * returning true and the field appears where it was meant to stay hidden. Only
- * whole rules go, the same way the save handler drops a rule that carries no
- * field ID at all, which keeps the surviving conditions no broader than before.
- *
- * This runs once the whole form is assembled because a rule may reference a
- * field in any step, including one sanitized after the rule itself.
+ * @see \ElzoForms\Form\Form_Data_Normalizer::drop_dangling_logic_rules()
  */
 function elzo_forms_drop_dangling_logic_rules(array $steps): array {
-    $field_ids = [];
-
-    foreach ($steps as $step) {
-        if (empty($step['fields']) || !is_array($step['fields'])) {
-            continue;
-        }
-
-        foreach ($step['fields'] as $field) {
-            if (is_array($field) && isset($field['id']) && is_scalar($field['id'])) {
-                $field_ids[(string) $field['id']] = true;
-            }
-        }
-    }
-
-    foreach ($steps as $step_index => $step) {
-        if (empty($step['fields']) || !is_array($step['fields'])) {
-            continue;
-        }
-
-        foreach ($step['fields'] as $field_index => $field) {
-            if (!is_array($field) || empty($field['rules']) || !is_array($field['rules'])) {
-                continue;
-            }
-
-            $groups = [];
-
-            foreach ($field['rules'] as $group) {
-                if (!is_array($group)) {
-                    continue;
-                }
-
-                $rules = array_filter($group, function ($rule) use ($field_ids) {
-                    if (!is_array($rule) || ($rule['type'] ?? '') !== 'field') {
-                        return true;
-                    }
-
-                    $settings = isset($rule['settings']) && is_array($rule['settings']) ? $rule['settings'] : [];
-                    $field_id = isset($settings['field_id']) && is_scalar($settings['field_id']) ? (string) $settings['field_id'] : '';
-
-                    return isset($field_ids[$field_id]);
-                });
-
-                if ($rules) {
-                    $groups[] = array_values($rules);
-                }
-            }
-
-            $steps[$step_index]['fields'][$field_index]['rules'] = $groups;
-        }
-    }
-
-    return $steps;
+    return \ElzoForms\Form\Form_Data_Normalizer::drop_dangling_logic_rules($steps);
 }
 
 // Save the custom meta box data
@@ -1166,7 +1174,7 @@ function elzo_forms_save_meta_box_data($post_id) {
                             continue;
                         }
 
-                        if($key == 'options'){
+                        if($key === 'options'){
                             // Convert options to array
                             $field[$key] = array_map(function($option){
                                 // Sanitize the option
@@ -1198,7 +1206,7 @@ function elzo_forms_save_meta_box_data($post_id) {
                                     'description' => $description,
                                 ];
                             }, array_filter(explode("\n", $value)));
-                        } else if($key == 'rules'){
+                        } else if($key === 'rules'){
                             // Loop through each group and sanitize condition items
                             if(!empty($value) && is_array($value)){
                                 foreach($value as $group_index => $group){
@@ -1253,21 +1261,12 @@ function elzo_forms_save_meta_box_data($post_id) {
                             // Remove empty groups and re-index
                             $groups = $field[$key] ?? [];
                             $field[$key] = is_array($groups) ? array_values(array_filter($groups)) : [];
-                        } else if($key == 'width') {
+                        } else if($key === 'width') {
                             $field[$key] = is_array($value) ? array_map('sanitize_text_field', $value) : [];
-                        } else if($key == 'content') {
-                            // Sanitize the HTML content, escape quotes, and handle newline characters
-                            $value = wp_kses_post($value);
-
-                            // Replace line breaks with custom placeholder
-                            $value = \ElzoForms\Utilities\Helpers::encode_line_breaks($value);
-
-                            // Escape quotes for JSON compatibility
-                            $value = str_replace(['"', "'"], ['\"', "\\'"], $value);
-
-                            // Update the field value
-                            $field[$key] = $value;
-                        } else if($key == 'allowed_file_types'){
+                        } else if($key === 'content') {
+                            // Sanitize the HTML content into its stored representation
+                            $field[$key] = \ElzoForms\Form\Form_Data_Normalizer::encode_content($value);
+                        } else if($key === 'allowed_file_types'){
                             $field[$key] = \ElzoForms\Utilities\Admin::handle_mime_types($value);
                         } else {
                             $field[$key] = sanitize_text_field($value);
@@ -1323,7 +1322,7 @@ function elzo_forms_save_meta_box_data($post_id) {
         foreach($posted_form_settings as $key => $value){
             // Sanitize key and value
             $key = sanitize_text_field($key);
-            $value = is_array($value) ? array_map('sanitize_text_field', $value) : sanitize_text_field($value);
+            $value = is_array($value) ? array_map('sanitize_text_field', $value) : (in_array($key, ['email_notification_recipients', 'email_notification_reply_to'], true) ? elzo_forms_sanitize_email_recipients($value) : sanitize_text_field($value));
 
             // Apply value filters
             $value = apply_filters('elzo_forms_form_settings_value_before_save', $value, $key);
@@ -1348,7 +1347,7 @@ function elzo_forms_save_meta_box_data($post_id) {
         foreach($posted_texts_settings as $key => $value){
             // Sanitize key and value
             $key = sanitize_text_field($key);
-            $value = sanitize_text_field($value);
+            $value = in_array($key, ['email_notification_subject', 'email_notification_message'], true) ? sanitize_textarea_field($value) : sanitize_text_field($value);
 
             // Apply value filters
             $value = apply_filters('elzo_forms_form_texts_value_before_save', $value, $key);
@@ -1361,7 +1360,7 @@ function elzo_forms_save_meta_box_data($post_id) {
 
     // Preserve existing modules from JSON unless new modules are posted
     $existing_content = get_post_field('post_content', $post_id);
-    $existing_data = $existing_content ? json_decode($existing_content, true) : null;
+    $existing_data = $existing_content ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $existing_content) : null;
     $existing_modules = (is_array($existing_data) && isset($existing_data['modules']) && is_array($existing_data['modules'])) ? $existing_data['modules'] : [];
     $posted_form_modules = [];
     if (!empty($_POST['elzo_forms_form_modules']) && is_array($_POST['elzo_forms_form_modules'])) {
@@ -1431,16 +1430,27 @@ function elzo_forms_save_meta_box_data($post_id) {
 
     // Filter callbacks receive only whitelisted, sanitized save context.
     $save_context = $data;
+    $clear_automation_draft = false;
 
     // Let feature modules (e.g., PRO automations) extend saved form payload.
     $data = apply_filters('elzo_forms_form_data_before_save', $data, $post_id, $save_context);
 
+    $notification_templates = [];
+    foreach (['email_notification_recipients' => 'settings', 'email_notification_reply_to' => 'settings', 'email_notification_subject' => 'texts', 'email_notification_message' => 'texts'] as $key => $section) {
+        $value = $data[$section][$key] ?? '';
+        $global = get_option($section === 'settings' ? 'elzo_forms_form_settings' : 'elzo_forms_texts_settings', []);
+        $notification_templates[$key] = $value !== '' ? $value : ($global[$key] ?? '');
+    }
+    $notification_errors = \ElzoForms\Variables\Notification_Validation::validate($notification_templates, (new \ElzoForms\Form\Form($data))->get_fields());
+    if ($notification_errors) {
+        set_transient(elzo_forms_notification_form_draft_key((int) $post_id), ['data' => $data, 'errors' => $notification_errors], DAY_IN_SECONDS);
+        $is_saving = false;
+        return;
+    }
+
     // Encode the data to JSON and handle errors
     try {
         $json_data = wp_json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-
-        // Replace escaped single quotes with actual single quotes
-        $json_data = str_replace("\\'", "'", $json_data);
     } catch (JsonException $e) {
         // Allow custom handling of JSON encoding failures.
         do_action('elzo_forms_json_encoding_error', $e, $post_id);
@@ -1453,11 +1463,14 @@ function elzo_forms_save_meta_box_data($post_id) {
     }
 
     // Save fields data as JSON in post content
-    wp_update_post([
+    $saved_post_id = wp_update_post([
         'ID' => $post_id,
         // wp_update_post() unslashes post fields before saving; keep JSON escape sequences intact.
         'post_content' => wp_slash($json_data),
     ]);
+    if ($saved_post_id && !is_wp_error($saved_post_id)) {
+        delete_transient(elzo_forms_notification_form_draft_key((int) $post_id));
+    }
 
     // Reset the static variable
     $is_saving = false;
@@ -1549,7 +1562,7 @@ function elzo_forms_submission_table_form_fields(array $steps): array {
 }
 
 function elzo_forms_submission_post_extra_columns($columns) {
-    /* translators: %s: Sequential field number shown as a fallback column label in the submissions table. */
+    /* translators: %s: Field ID or position, shown when the field has no label. */
     $field_label_format = __('Field %s', 'elzo-forms');
 
     $field_labels = [
@@ -1578,7 +1591,7 @@ function elzo_forms_submission_post_extra_columns($columns) {
     if($single_form_id || $selected_form_id > 0) {
         $form_id = $single_form_id ? $single_form_id : $selected_form_id;
         $form_data = $form_id ? get_post_field('post_content', $form_id) : null;
-        $form = $form_data ? json_decode($form_data, true) : null;
+        $form = $form_data ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $form_data) : null;
         $steps = !empty($form['steps']) && is_array($form['steps']) ? $form['steps'] : [];
         $fields = elzo_forms_submission_table_form_fields($steps);
 
@@ -1760,7 +1773,7 @@ add_action('manage_elzo_submission_posts_custom_column' , 'elzo_forms_submission
 
 function elzo_forms_submission_post_form_dropdown_filter() {
     global $typenow;
-    if ($typenow == 'elzo_submission') {
+    if ($typenow === 'elzo_submission') {
         $args = array(
             'post_type' => 'elzo_form',
             'posts_per_page' => -1,
@@ -1797,7 +1810,7 @@ function elzo_forms_submission_post_form_dropdown_filter_query($query) {
     $post_type = elzo_forms_get_admin_query_slug('post_type');
     $selected_form_id = elzo_forms_get_admin_query_text('elzo_form_id');
 
-    if ($pagenow == 'edit.php' && $query->is_main_query() && $post_type == $type && $selected_form_id !== '') {
+    if ($pagenow === 'edit.php' && $query->is_main_query() && $post_type === $type && $selected_form_id !== '') {
         $query->query_vars['meta_key'] = 'form_id'; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Required for admin list-table filtering by selected form.
         $query->query_vars['meta_value'] = $selected_form_id; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Required for admin list-table filtering by selected form.
     }
@@ -1805,25 +1818,86 @@ function elzo_forms_submission_post_form_dropdown_filter_query($query) {
 
 add_filter('parse_query', 'elzo_forms_submission_post_form_dropdown_filter_query');
 
-// Register spam post status (run immediately if we're already in init, otherwise hook it)
-function elzo_forms_register_post_statuses() {
-    register_post_status('spam', array(
-        'label'                     => _x('Spam', 'post status', 'elzo-forms'),
-        'public'                    => false,
-        'exclude_from_search'       => true,
-        'show_in_admin_all_list'    => false,
-        'show_in_admin_status_list' => true,
-        /* translators: %s: Number of spam submissions. */
-        'label_count'               => _n_noop('Spam <span class="count">(%s)</span>', 'Spam <span class="count">(%s)</span>', 'elzo-forms'),
-    ));
+// Submission Date Range Filter
+// Replaces the month dropdown, which cannot narrow submissions to days or
+// span several months.
+
+function elzo_forms_submission_disable_months_dropdown($disable, $post_type) {
+    return $post_type === 'elzo_submission' ? true : $disable;
 }
 
-// Run immediately if init has already happened
-if (did_action('init')) {
-    elzo_forms_register_post_statuses();
-} else {
-    add_action('init', 'elzo_forms_register_post_statuses');
+add_filter('disable_months_dropdown', 'elzo_forms_submission_disable_months_dropdown', 10, 2);
+
+/**
+ * Get the date range selected in the submissions list.
+ *
+ * @return array{from: string, to: string} Valid Y-m-d dates, or empty strings.
+ */
+function elzo_forms_get_submission_date_range() {
+    $range = array();
+
+    foreach (array('from' => 'elzo_date_from', 'to' => 'elzo_date_to') as $bound => $key) {
+        $date = elzo_forms_get_admin_query_text($key);
+        $range[$bound] = preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts) && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])
+            ? $date
+            : '';
+    }
+
+    // A reversed range still means the days between the two dates.
+    if ($range['from'] !== '' && $range['to'] !== '' && $range['from'] > $range['to']) {
+        $range = array('from' => $range['to'], 'to' => $range['from']);
+    }
+
+    return $range;
 }
+
+function elzo_forms_submission_date_range_filter($post_type) {
+    if ($post_type !== 'elzo_submission') {
+        return;
+    }
+
+    $range = elzo_forms_get_submission_date_range();
+
+    echo '<span class="elzo-forms-date-range">';
+    echo '<label for="elzo-forms-date-from" class="screen-reader-text">' . esc_html__('Submitted from', 'elzo-forms') . '</label>';
+    echo '<input type="date" id="elzo-forms-date-from" name="elzo_date_from" value="' . esc_attr($range['from']) . '" title="' . esc_attr__('Submitted from', 'elzo-forms') . '">';
+    echo '<span class="elzo-forms-date-range-separator" aria-hidden="true">&ndash;</span>';
+    echo '<label for="elzo-forms-date-to" class="screen-reader-text">' . esc_html__('Submitted until', 'elzo-forms') . '</label>';
+    echo '<input type="date" id="elzo-forms-date-to" name="elzo_date_to" value="' . esc_attr($range['to']) . '" title="' . esc_attr__('Submitted until', 'elzo-forms') . '">';
+    echo '</span>';
+}
+
+// Before the form filter, where WordPress shows the month dropdown.
+add_action('restrict_manage_posts', 'elzo_forms_submission_date_range_filter', 5);
+
+function elzo_forms_submission_date_range_filter_query($query) {
+    global $pagenow;
+
+    if ($pagenow !== 'edit.php' || !$query->is_main_query() || elzo_forms_get_admin_query_slug('post_type') !== 'elzo_submission') {
+        return;
+    }
+
+    $range = elzo_forms_get_submission_date_range();
+    if ($range['from'] === '' && $range['to'] === '') {
+        return;
+    }
+
+    // Days are whole and in the site timezone, as the Date column shows them.
+    $date_query = array(
+        'column' => 'post_date',
+        'inclusive' => true,
+    );
+    if ($range['from'] !== '') {
+        $date_query['after'] = $range['from'] . ' 00:00:00';
+    }
+    if ($range['to'] !== '') {
+        $date_query['before'] = $range['to'] . ' 23:59:59';
+    }
+
+    $query->query_vars['date_query'] = array($date_query);
+}
+
+add_filter('parse_query', 'elzo_forms_submission_date_range_filter_query');
 
 // Add Spam filter to submission post type views
 function elzo_forms_submission_views($views) {
@@ -2032,7 +2106,7 @@ function elzo_forms_handle_mime_types($mime_types_string, $return_format = 'stri
     }
 
     // Return mime types as a string
-    return $return_format == 'array' ? $mime_types : implode(', ', $mime_types);
+    return $return_format === 'array' ? $mime_types : implode(', ', $mime_types);
 }
 
 // Convert mime types to file extensions

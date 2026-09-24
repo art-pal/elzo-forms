@@ -9,4 +9,4 @@ defined('ABSPATH') || exit;
 $form_data = isset($form_object) && method_exists($form_object, 'to_array') ? $form_object->to_array() : [];
 
 // Include unified modules template
-include plugin_dir_path(__FILE__) . 'admin-settings-modules.php';
+require plugin_dir_path(__FILE__) . 'admin-settings-modules.php';

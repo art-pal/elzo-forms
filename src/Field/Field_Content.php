@@ -7,6 +7,8 @@
 
 namespace ElzoForms\Field;
 
+use ElzoForms\Form\Form_Data_Normalizer;
+
 // Exit if accessed directly
 defined('ABSPATH') || exit;
 
@@ -71,6 +73,17 @@ class Field_Content extends Field {
     }
 
     /**
+     * Get the content as HTML, turned back from its stored representation.
+     *
+     * @return string
+     */
+    public function get_content_html(): string {
+        $content = $this->get('content', '');
+
+        return is_scalar($content) ? Form_Data_Normalizer::decode_content((string) $content) : '';
+    }
+
+    /**
      * Prepare all data for template rendering.
      *
      * @param array $context Additional context (form_settings, etc.)
@@ -80,7 +93,7 @@ class Field_Content extends Field {
         $data = parent::get_data($context);
 
         // Add content field-specific data
-        $data['content'] = $this->get('content', '');
+        $data['content'] = $this->get_content_html();
         $data['is_html'] = $this->get('is_html', false);
 
         return $data;
@@ -98,7 +111,7 @@ class Field_Content extends Field {
         $field_index = $this->get('index', 0);
 
         if ($tab === 'general') {
-            $content = \ElzoForms\Utilities\Helpers::decode_line_breaks($this->get('content', ''));
+            $content = $this->get_content_html();
             $is_html = $this->get('is_html', false);
             ?>
             <div class="elzo-forms-field-control-group">

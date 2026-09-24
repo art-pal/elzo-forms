@@ -1,0 +1,208 @@
+/* Import / Export screen */
+
+.elzo-forms-ie-tabs {
+    margin-top: 1rem;
+}
+
+.elzo-forms-ie-panels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    max-width: 1400px;
+}
+
+@media (min-width: 1280px) {
+    .elzo-forms-ie-panels {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+    }
+}
+
+.elzo-forms-ie-panel {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    padding: 16px 20px 20px;
+}
+
+/* The heading buttons of the form and submission screens link to a panel. */
+.elzo-forms-ie-panel:target {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    scroll-margin-top: 50px;
+}
+
+.elzo-forms-ie-panel-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+}
+
+.elzo-forms-ie-panel h3 {
+    margin: 20px 0 8px;
+    font-size: 14px;
+}
+
+.elzo-forms-ie-fieldset {
+    margin: 16px 0;
+    padding: 0;
+    border: 0;
+}
+
+.elzo-forms-ie-legend {
+    margin-bottom: 6px;
+    padding: 0;
+    font-weight: 600;
+}
+
+.elzo-forms-ie-option {
+    display: block;
+    margin: 4px 0;
+}
+
+.elzo-forms-ie-option-inline {
+    display: inline-block;
+    margin-right: 16px;
+}
+
+.elzo-forms-ie-choice-list {
+    max-height: 240px;
+    overflow: auto;
+    margin: 4px 0 0;
+    padding: 6px 10px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+
+.elzo-forms-ie-choice-search {
+    margin: 4px 0 10px;
+}
+
+/* Option rows set their own display, which would otherwise override [hidden]. */
+.elzo-forms-ie-fieldset [hidden] {
+    display: none;
+}
+
+.elzo-forms-ie-choice-empty {
+    margin: 4px 0;
+}
+
+.elzo-forms-ie-toggle-all {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #dcdcde;
+    font-weight: 600;
+}
+
+.elzo-forms-ie-option-group.is-disabled {
+    opacity: 0.55;
+}
+
+.elzo-forms-ie-muted {
+    color: #646970;
+}
+
+.elzo-forms-ie-field {
+    margin: 12px 0;
+}
+
+.elzo-forms-ie-field label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.elzo-forms-ie-field select {
+    min-width: 240px;
+    max-width: 100%;
+}
+
+.elzo-forms-ie-dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.elzo-forms-ie-dropzone {
+    margin: 12px 0 6px;
+    padding: 20px;
+    border: 2px dashed #c3c4c7;
+    border-radius: 4px;
+    background: #f6f7f7;
+    text-align: center;
+}
+
+.elzo-forms-ie-dropzone.is-dragover {
+    border-color: var(--wp-admin-theme-color, #2271b1);
+    background: #f0f6fc;
+}
+
+.elzo-forms-ie-dropzone-text {
+    display: block;
+    margin-bottom: 8px;
+    color: #50575e;
+}
+
+.elzo-forms-ie-dropzone-file {
+    display: block;
+    margin-top: 8px;
+    font-weight: 600;
+}
+
+.elzo-forms-ie-dropzone-file:empty {
+    display: none;
+}
+
+.elzo-forms-ie-table {
+    margin: 8px 0 12px;
+}
+
+.elzo-forms-ie-table td {
+    vertical-align: top;
+}
+
+.elzo-forms-ie-table select {
+    max-width: 100%;
+}
+
+.elzo-forms-ie-list {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    list-style: disc;
+}
+
+.elzo-forms-ie-warnings {
+    color: #8a5a00;
+    font-size: 12px;
+}
+
+.elzo-forms-ie-warning {
+    color: #8a5a00;
+}
+
+.elzo-forms-ie-error {
+    margin: 6px 0 0;
+    color: #b32d2e;
+}
+
+.elzo-forms-ie-replace-note {
+    margin: 6px 0 0;
+    color: #8a5a00;
+}
+
+/* With the script running, the Replace note shows only while Replace is selected. */
+.elzo-forms-ie-enhanced [data-elzo-ie-row]:not(.is-replace) .elzo-forms-ie-replace-note {
+    display: none;
+}
+
+.elzo-forms-ie-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.elzo-forms-ie-inline-form {
+    margin: 0;
+}

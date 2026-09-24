@@ -349,9 +349,12 @@ class Field_Range extends Field {
      */
     public function get_data(array $context = []): array {
         $data = parent::get_data($context);
+        $data['min_input_id'] = $this->get_element_id('min-input');
+        $data['max_input_id'] = $this->get_element_id('max-input');
+        $data['value_input_id'] = $this->get_element_id('value');
 
         $range_types = \ElzoForms\Utilities\Helpers::get_field_range_types();
-        $range_type = !empty($this->get('range_type')) && in_array($this->get('range_type'), array_keys($range_types))
+        $range_type = !empty($this->get('range_type')) && in_array($this->get('range_type'), array_keys($range_types), true)
             ? $this->get('range_type')
             : 'range_2';
 
@@ -460,7 +463,7 @@ class Field_Range extends Field {
 
         if ($tab === 'general') {
             $range_types = \ElzoForms\Utilities\Helpers::get_field_range_types();
-        $range_type = !empty($this->get('range_type')) && in_array($this->get('range_type'), array_keys($range_types)) ? $this->get('range_type') : 'range_2';
+        $range_type = !empty($this->get('range_type')) && in_array($this->get('range_type'), array_keys($range_types), true) ? $this->get('range_type') : 'range_2';
         $step = $this->get('step', '');
         $default_value = $this->get('default_value', '');
         $min_value = $this->get('min_value', '');

@@ -1,0 +1,34 @@
+/* Admin/theme styles must not reveal the canonical source in visual mode. */
+.elzo-forms-variables-shell [hidden]{display:none!important}
+.elzo-forms-variables-picker [hidden]{display:none!important}
+.elzo-forms-variables-context{margin-bottom:14px}
+.elzo-forms-variables-context select,.elzo-forms-variables-context input{width:100%;max-width:100%}
+.elzo-forms-variables-shell{max-width:100%;width:100%}
+.elzo-forms-variables-editor{box-sizing:border-box;min-height:36px;padding:6px 8px;border:1px solid #8c8f94;border-radius:4px;background:#fff;color:#2c3338;line-height:1.8;overflow-wrap:anywhere;white-space:pre-wrap}
+.elzo-forms-variables-editor[aria-multiline="true"]{min-height:90px}
+.elzo-forms-variables-editor:hover{border-color:#1d2327}
+.elzo-forms-variables-editor:focus{border-color:var(--wp-admin-theme-color,#2271b1);outline:none;box-shadow:0 0 0 1px var(--wp-admin-theme-color,#2271b1)}
+.has-validation-error .elzo-forms-variables-editor{border-color:#d63638}
+.elzo-forms-variables-editor:empty:before{content:attr(data-placeholder);color:#646970;pointer-events:none}
+.elzo-forms-variable-token{display:inline-block;max-width:100%;padding:0 5px;margin:0 2px;border:1px solid var(--wp-admin-theme-color,#2271b1);border-radius:4px;background:rgba(var(--wp-admin-theme-color--rgb,34,113,177),.08);color:var(--wp-admin-theme-color,#2271b1);font-size:12px;line-height:1.7;white-space:normal;overflow-wrap:anywhere;cursor:default;user-select:all}
+.elzo-forms-variables-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.elzo-forms-variables-toolbar .button-link{font-size:12px}
+.elzo-forms-variables-picker{box-sizing:border-box;width:min(540px,calc(100% - 32px));max-height:75vh;padding:20px;border:1px solid #c3c4c7;border-radius:8px;background:#fff;color:#2c3338;box-shadow:0 12px 50px #0003}
+.elzo-forms-variables-picker::backdrop{background:#0006}
+.elzo-forms-variables-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;font-size:16px}
+.elzo-forms-variables-picker-heading strong{display:inline-flex;align-items:center;gap:7px}
+.elzo-forms-variables-picker-heading .elzo-icon{color:var(--wp-admin-theme-color,#2271b1)}
+.elzo-forms-variables-picker .elzo-forms-variables-search{width:100%;min-height:36px}
+.elzo-forms-variables-list{max-height:42vh;overflow:auto;margin:12px 0}
+.elzo-forms-variables-group{margin:14px 0 4px;font-weight:600;color:#50575e}
+.elzo-forms-variables-option{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;padding:9px 10px;border:0;border-radius:4px;background:#fff;color:#2c3338;text-align:left;cursor:pointer}
+.elzo-forms-variables-option:hover,.elzo-forms-variables-option:focus{background:rgba(var(--wp-admin-theme-color--rgb,34,113,177),.08)}
+.elzo-forms-variables-option small{font-size:12px;color:#50575e;overflow-wrap:anywhere}
+.elzo-forms-variables-manual{border-top:1px solid #dcdcde;padding-top:12px}
+.elzo-forms-variables-manual summary{cursor:pointer;color:var(--wp-admin-theme-color,#2271b1)}
+.elzo-forms-variables-manual label{display:flex;flex-direction:column;gap:5px;margin:10px 0}
+.elzo-forms-variables-manual input{width:100%}
+.elzo-forms-variables-status:empty{display:none}
+@media(pointer:coarse){.elzo-forms-variables-option{min-height:44px}}
+
+.elzo-forms-variable-token.is-selected{background:var(--wp-admin-theme-color,#2271b1);color:#fff;box-shadow:0 0 0 1px var(--wp-admin-theme-color,#2271b1)}

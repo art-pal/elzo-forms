@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.1.0
+ * @version     1.2.0
  *
  * @var array $d Field data prepared for rendering
  */
@@ -34,9 +34,9 @@ defined('ABSPATH') || exit;
 
 ?>
 <?php if($options){ ?>
-    <div class="elzo-forms-radio-list-wrapper elzo-forms-field-options-layout-<?php echo esc_attr($layout); ?>" role="radiogroup"<?php if($label){ ?> aria-labelledby="<?php echo esc_attr($id); ?>-label"<?php } ?>>
+    <div class="elzo-forms-radio-list-wrapper elzo-forms-field-options-layout-<?php echo esc_attr($layout); ?>" role="radiogroup"<?php if($label){ ?> aria-labelledby="<?php echo esc_attr($label_id); ?>"<?php } ?><?php if (!empty($described_by)) { ?> aria-describedby="<?php echo esc_attr($described_by); ?>"<?php } ?>>
         <?php $option_index = 0; foreach($options as $option): $option_index++;
-            $option_id = $id . '-' . $option_index;
+            $option_id = $field->get_option_id($option_index);
             $option_label = !empty($option['label']) ? $option['label'] : $option['value'];
             $option_description = !empty($option['description']) ? $option['description'] : '';
         ?>

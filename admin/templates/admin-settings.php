@@ -11,8 +11,8 @@ defined('ABSPATH') || exit;
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound,WordPress.WP.GlobalVariablesOverride.Prohibited -- This template is loaded in function scope; its variables are not globals.
 
 // Get settings
-$form_settings = get_option('elzo_forms_form_settings', array());
-$texts_settings = get_option('elzo_forms_texts_settings', array());
+$form_settings = elzo_forms_get_notification_option_for_editor('elzo_forms_form_settings');
+$texts_settings = elzo_forms_get_notification_option_for_editor('elzo_forms_texts_settings');
 $style_settings = get_option('elzo_forms_style_settings', array());
 
 // Define Tabs with URLs for navigation
@@ -47,7 +47,18 @@ $elzo_plugin_settings = true;
     <h1 class="wp-heading-inline"><?php echo esc_html($title); ?></h1>
     <?php
         $settings_updated = elzo_forms_get_admin_query_slug('settings-updated');
-        if ('true' === $settings_updated) {
+        $notification_option = 'elzo_forms_' . $current_tab . '_settings';
+        $notification_draft = get_transient(elzo_forms_notification_option_draft_key($notification_option));
+        if (is_array($notification_draft)) {
+            echo '<div class="notice notice-error"><p>' . esc_html__('These notification changes were not applied. Correct the variable errors below and save again; the proposed values remain in the editor.', 'elzo-forms') . '</p><ul>';
+            foreach (\ElzoForms\Variables\Notification_Validation::validate($notification_draft) as $error) {
+                echo '<li>' . esc_html($error['message']) . '</li>';
+            }
+            echo '</ul></div>';
+        } else {
+            settings_errors();
+        }
+        if ('true' === $settings_updated && !$notification_draft) {
     ?>
         <div class="notice notice-success is-dismissible">
             <p><?php esc_html_e('Settings saved successfully.', 'elzo-forms'); ?></p>

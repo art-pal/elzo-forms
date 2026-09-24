@@ -174,13 +174,16 @@ class Conditional_Logic {
      * @see get_condition_types() for $usage_context values.
      */
     public static function get_condition_operator_labels(string $usage_context = ''): array {
+        // PRO operators with the same wording reuse these FREE labels.
+        $contains_label = __('contains', 'elzo-forms');
+        $not_contains_label = __('does not contain', 'elzo-forms');
         $labels = [
             '=='              => __('is', 'elzo-forms'),
             '!='              => __('is not', 'elzo-forms'),
             '>'               => __('greater than', 'elzo-forms'),
             '<'               => __('less than', 'elzo-forms'),
-            'like'            => __('contains', 'elzo-forms'),
-            'not_like'        => __('does not contain', 'elzo-forms'),
+            'like'            => $contains_label,
+            'not_like'        => $not_contains_label,
             'starts_with'     => __('starts with', 'elzo-forms'),
             'ends_with'       => __('ends with', 'elzo-forms'),
             'pattern'         => __('matches pattern', 'elzo-forms'),

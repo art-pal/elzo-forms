@@ -29,7 +29,7 @@ class Settings {
             ? $args['form_post']
             : get_post($args['form_id']);
 
-        $form = $form_post->post_content ? json_decode($form_post->post_content, true) : null;
+        $form = $form_post->post_content ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $form_post->post_content) : null;
         $form_settings = !empty($form['settings']) ? $form['settings'] : [];
         $global_settings = get_option('elzo_forms_form_settings', []);
         $global_settings = is_array($global_settings) ? $global_settings : [];
@@ -110,7 +110,7 @@ class Settings {
                 ? $args['form_post']
                 : get_post($args['form_id']);
 
-            $form = $form_post && $form_post->post_content ? json_decode($form_post->post_content, true) : null;
+            $form = $form_post && $form_post->post_content ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $form_post->post_content) : null;
             $form_styles = !empty($form['styles']) ? $form['styles'] : [];
 
             $form_styles = wp_parse_args(array_filter($form_styles, function($value) {
@@ -138,8 +138,10 @@ class Settings {
             'clear_form_after_submission' => 'yes',
             'hide_form_after_submission' => 'no',
             'form_submission_type' => 'ajax',
-            'email_notifications' => 'no',
+            'email_notifications' => 'yes',
             'email_notification_recipients' => '',
+            'email_notification_reply_to' => '',
+            'submission_read_state' => 'yes',
             'blocked_ips' => '',
             'blocked_words' => '',
             'blocked_submission_action' => 'spam',
@@ -195,7 +197,7 @@ class Settings {
                 ? $args['form_post']
                 : get_post($args['form_id']);
 
-            $form = $form_post && $form_post->post_content ? json_decode($form_post->post_content, true) : null;
+            $form = $form_post && $form_post->post_content ? \ElzoForms\Form\Form_Data_Normalizer::decode_form_json((string) $form_post->post_content) : null;
             $form_texts = !empty($form['texts']) ? $form['texts'] : [];
 
             $form_texts = wp_parse_args(array_filter($form_texts, function($value) {

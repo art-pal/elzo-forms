@@ -131,13 +131,17 @@
     <?php endforeach; ?>
 
     <?php if ($rule_type !== '' && !$is_registered_type): ?>
+        <?php
+            $unavailable_notice = __('This condition type is not available. The condition is kept, but counts as not met until the plugin that adds it is active.', 'elzo-forms');
+            // Locked PRO types exist only in FREE. The FREE build rewrites
+            // "+PRO", so this text must not reach the PRO package unchanged.
+            if (!empty($condition_type_item['pro'])) {
+                $unavailable_notice = __('Requires Elzo Forms PRO. The condition is kept, but counts as not met until PRO is active.', 'elzo-forms');
+            }
+        ?>
         <p class="elzo-forms-field-logic-unavailable-notice" data-stored-type="<?php echo esc_attr($rule_type); ?>">
             <span class="dashicons dashicons-warning" aria-hidden="true"></span>
-            <span><?php
-                echo esc_html(!empty($condition_type_item['pro'])
-                    ? __('Requires Elzo Forms PRO. The condition is kept, but counts as not met until PRO is active.', 'elzo-forms')
-                    : __('This condition type is not available. The condition is kept, but counts as not met until the plugin that adds it is active.', 'elzo-forms'));
-            ?></span>
+            <span><?php echo esc_html($unavailable_notice); ?></span>
         </p>
     <?php endif; ?>
 

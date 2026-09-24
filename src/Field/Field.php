@@ -11,6 +11,7 @@
  * Child classes SHOULD override:
  * - sanitize_input($value): mixed|WP_Error - Pure early submission sanitization
  * - finalize_submission_value($value): mixed|WP_Error - Deferred side effects
+ * - render_submission_value($value, $context): string - Safe admin submission HTML
  * - get_data($context): array           - Add field-specific data for rendering
  * - render_html($field_data): string    - Render field inline (if not using template)
  * - get_defaults(): array               - Define field-specific default values
@@ -41,6 +42,9 @@ abstract class Field implements \ArrayAccess {
 
     /** @var array Cache for rendered data */
     private $render_data_cache = [];
+
+    /** @var \ElzoForms\Form\Form_Instance|null Form instance being rendered. */
+    private $render_instance = null;
 
     /**
      * @var int Form this field belongs to.
@@ -305,6 +309,68 @@ abstract class Field implements \ArrayAccess {
         $this->form_id = max(0, $form_id);
 
         return $this;
+    }
+
+    /**
+     * Bind the field to the form instance being rendered.
+     *
+     * Set by Form::render() for the duration of one render. While bound, every
+     * HTML ID of the field is namespaced by the instance; without an instance
+     * the field keeps the IDs of Elzo Forms 1.1.
+     *
+     * @param \ElzoForms\Form\Form_Instance|null $instance Instance, or null to unbind.
+     * @return self For method chaining.
+     */
+    public function set_render_instance(?\ElzoForms\Form\Form_Instance $instance): self {
+        $this->render_instance = $instance;
+
+        return $this;
+    }
+
+    /**
+     * Get the form instance being rendered.
+     *
+     * @return \ElzoForms\Form\Form_Instance|null
+     */
+    public function get_render_instance(): ?\ElzoForms\Form\Form_Instance {
+        return $this->render_instance;
+    }
+
+    /**
+     * Render a saved value in the submission admin or notification email.
+     *
+     * Contract: return safe HTML, escaping text, URLs and attributes here.
+     * Custom fields may override this without changing the admin presenter.
+     * Context contains channel (admin/email), submission_field, submission_id
+     * and form_id when available. Email renderers must not depend on admin CSS.
+     *
+     * @param mixed $value Saved submission value, not frontend input.
+     * @param array $context Presentation context.
+     * @return string Safe HTML, ready to output without further escaping.
+     */
+    public function render_submission_value($value, array $context = []): string {
+        $text = self::submission_value_to_text($value);
+
+        return $text !== '' ? esc_html($text) : '-';
+    }
+
+    /**
+     * Convert saved values to plain text for generic display and editors.
+     *
+     * Nested imported values are represented as JSON rather than triggering
+     * array-to-string warnings. Escaping belongs to the output caller.
+     *
+     * @param mixed $value Saved value.
+     * @return string Plain text.
+     */
+    public static function submission_value_to_text($value): string {
+        if (is_array($value)) {
+            return implode(', ', array_map(static function ($item): string {
+                return is_array($item) ? (string) wp_json_encode($item, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : (is_scalar($item) ? (string) $item : '');
+            }, $value));
+        }
+
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**
@@ -615,17 +681,109 @@ abstract class Field implements \ArrayAccess {
     /**
      * Get field ID attribute.
      *
-     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
+     * @param string $form_instance_suffix Suffix of Elzo Forms 1.1, applied only
+     *                                     while no form instance is bound.
      * @return string
      */
     public function get_field_id(string $form_instance_suffix = ''): string {
-        $custom_id = $this->get('custom_id');
-        $field_id = $this->get_id();
-        $base_id = !empty($custom_id) && is_scalar($custom_id)
-            ? trim((string) $custom_id)
-            : "elzo-forms-field-$field_id";
+        $custom_id = $this->get_custom_id('custom_id');
+
+        if ($this->render_instance) {
+            return $this->render_instance->field_element_id($this->get_id(), '', $custom_id);
+        }
+
+        $base_id = $custom_id !== '' ? $custom_id : 'elzo-forms-field-' . $this->get_id();
 
         return $base_id . self::normalize_form_instance_suffix($form_instance_suffix);
+    }
+
+    /**
+     * Get the HTML ID of an element that belongs to the field.
+     *
+     * Field templates use it for every ID besides the control and the wrapper,
+     * so a template override can add elements that stay unique too.
+     *
+     * @param string $part Element name, such as "label", "help" or "option-2".
+     * @return string
+     */
+    public function get_element_id(string $part): string {
+        if ($this->render_instance) {
+            return $this->render_instance->field_element_id($this->get_id(), $part);
+        }
+
+        return $this->get_field_id() . '-' . $part;
+    }
+
+    /**
+     * Get the HTML ID of the field label.
+     *
+     * @return string
+     */
+    public function get_label_id(): string {
+        return $this->get_element_id('label');
+    }
+
+    /**
+     * Get the HTML ID of the text under the label.
+     *
+     * @return string
+     */
+    public function get_description_id(): string {
+        return $this->get_element_id('description');
+    }
+
+    /**
+     * Get the HTML ID of the text under the field.
+     *
+     * @return string
+     */
+    public function get_help_id(): string {
+        return $this->get_element_id('help');
+    }
+
+    /**
+     * Get the HTML ID of a choice option's input.
+     *
+     * @param int $position Option position, from 1.
+     * @return string
+     */
+    public function get_option_id(int $position): string {
+        if ($this->render_instance) {
+            return $this->get_element_id('option-' . $position);
+        }
+
+        return $this->get_field_id() . '-' . $position;
+    }
+
+    /**
+     * Get the IDs of the texts that describe the field.
+     *
+     * @return string Space-separated IDs for aria-describedby, or an empty string.
+     */
+    public function get_described_by(): string {
+        $ids = [];
+
+        if ($this->shows_label_wrapper() && (string) $this->get('under_label', '') !== '') {
+            $ids[] = $this->get_description_id();
+        }
+
+        if ($this->shows_under_field()) {
+            $ids[] = $this->get_help_id();
+        }
+
+        return implode(' ', $ids);
+    }
+
+    /**
+     * Read an author-chosen HTML ID setting.
+     *
+     * @param string $key Setting key.
+     * @return string
+     */
+    private function get_custom_id(string $key): string {
+        $custom_id = $this->get($key);
+
+        return !empty($custom_id) && is_scalar($custom_id) ? trim((string) $custom_id) : '';
     }
 
     /**
@@ -666,15 +824,18 @@ abstract class Field implements \ArrayAccess {
     /**
      * Get field wrapper ID attribute.
      *
-     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
+     * @param string $form_instance_suffix Suffix of Elzo Forms 1.1, applied only
+     *                                     while no form instance is bound.
      * @return string
      */
     public function get_wrapper_id(string $form_instance_suffix = ''): string {
-        $custom_id = $this->get('wrapper_custom_id');
-        $field_id = $this->get_id();
-        $base_id = !empty($custom_id) && is_scalar($custom_id)
-            ? trim((string) $custom_id)
-            : "elzo-forms-field-wrapper-$field_id";
+        $custom_id = $this->get_custom_id('wrapper_custom_id');
+
+        if ($this->render_instance) {
+            return $this->render_instance->field_element_id($this->get_id(), 'wrapper', $custom_id);
+        }
+
+        $base_id = $custom_id !== '' ? $custom_id : 'elzo-forms-field-wrapper-' . $this->get_id();
 
         return $base_id . self::normalize_form_instance_suffix($form_instance_suffix);
     }
@@ -699,7 +860,8 @@ abstract class Field implements \ArrayAccess {
     /**
      * Get field wrapper attributes as HTML string.
      *
-     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
+     * @param string $form_instance_suffix Suffix of Elzo Forms 1.1, applied only
+     *                                     while no form instance is bound.
      * @return string
      */
     public function get_wrapper_attributes(string $form_instance_suffix = ''): string {
@@ -730,7 +892,8 @@ abstract class Field implements \ArrayAccess {
      * Get field attributes as HTML string.
      *
      * @param array $form_settings Optional form settings
-     * @param string $form_instance_suffix Optional DOM ID suffix for a repeated form.
+     * @param string $form_instance_suffix Suffix of Elzo Forms 1.1, applied only
+     *                                     while no form instance is bound.
      * @return string
      */
     public function get_field_attributes(array $form_settings = [], string $form_instance_suffix = ''): string {
@@ -740,6 +903,11 @@ abstract class Field implements \ArrayAccess {
         $attributes[] = 'name="' . esc_attr($this->get_field_name()) . '"';
         $attributes[] = 'class="' . esc_attr($this->get_field_class($form_settings)) . '"';
         $attributes[] = 'id="' . esc_attr($this->get_field_id($form_instance_suffix)) . '"';
+
+        $described_by = $this->get_described_by();
+        if ($described_by !== '') {
+            $attributes[] = 'aria-describedby="' . esc_attr($described_by) . '"';
+        }
 
         $placeholder = $this->get_placeholder();
         if ($placeholder) {
@@ -763,8 +931,9 @@ abstract class Field implements \ArrayAccess {
      * @return array Complete field data for rendering
      */
     public function get_data(array $context = []): array {
-        // Return cached data if context matches
-        $context_key = md5(serialize($context)); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used only to hash trusted render context; data is never unserialized.
+        // Return cached data if context and form instance match
+        $instance_id = $this->render_instance ? $this->render_instance->get_id() : '';
+        $context_key = md5($instance_id . '|' . serialize($context)); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Used only to hash trusted render context; data is never unserialized.
         if (isset($this->render_data_cache[$context_key])) {
             return $this->render_data_cache[$context_key];
         }
@@ -808,9 +977,15 @@ abstract class Field implements \ArrayAccess {
             'class' => $this->get_field_class($form_settings),
             'wrapper_id' => $this->get_wrapper_id($form_instance_suffix),
             'wrapper_class' => $this->get_wrapper_class(),
+            'label_id' => $this->get_label_id(),
+            'description_id' => $this->get_description_id(),
+            'help_id' => $this->get_help_id(),
+            'described_by' => $this->get_described_by(),
 
             // Context
             'form_id' => (int) ($context['form_id'] ?? 0),
+            'form_instance' => $this->render_instance,
+            'form_instance_id' => $this->render_instance ? $this->render_instance->get_id() : '',
             'form_instance_suffix' => $form_instance_suffix,
             'form_settings' => $form_settings,
             'texts_settings' => $context['texts_settings'] ?? [],
@@ -826,7 +1001,7 @@ abstract class Field implements \ArrayAccess {
     }
 
     /**
-     * Accept only the numeric suffixes generated by Form::render().
+     * Accept only the numeric suffixes Form::render() generated in Elzo Forms 1.1.
      *
      * The suffix affects DOM identifiers only. Stored field IDs, input names,
      * data-ef-field-id and the submission payload remain unchanged.

@@ -36,7 +36,7 @@ class Helpers {
     public static function slugify_field_key(string $value, string $fallback = 'field'): string {
         $value = trim($value);
         $original_value = $value;
-        $fallback = (string) preg_replace('/[^a-z0-9]+/', '-', strtolower(trim($fallback)));
+        $fallback = (string) preg_replace('/[^a-z0-9_]+/', '-', strtolower(trim($fallback)));
         $fallback = trim($fallback, '-');
         if ($fallback === '') {
             $fallback = 'field';
@@ -62,7 +62,7 @@ class Helpers {
         }
 
         $value = strtolower($value);
-        $value = (string) preg_replace('/[^a-z0-9]+/', '-', $value);
+        $value = (string) preg_replace('/[^a-z0-9_]+/', '-', $value);
         $value = trim($value, '-');
 
         if ($value !== '') {
@@ -220,6 +220,8 @@ class Helpers {
             'errorOccurred' => __('An error occurred', 'elzo-forms'),
             'tryAgain' => __('Please try again', 'elzo-forms'),
             'fillInRequiredFields' => __('Please fill in all required fields', 'elzo-forms'),
+            'closeDialog' => __('Close dialog', 'elzo-forms'),
+            'confirmRemoveFile' => __('Are you sure you want to remove this file?', 'elzo-forms'),
             /* translators: %s: Maximum allowed file count. */
             'maximumFilesReached' => __('You can not upload more than %s files', 'elzo-forms'),
             /* translators: %s: Maximum allowed file size in megabytes. */
@@ -256,7 +258,7 @@ class Helpers {
         foreach ($width as $keypoint => $label) {
             $column_size_array = array_map('intval', explode('/', $label));
             $column_size = round(12 * ($column_size_array[0] / $column_size_array[1]));
-            $width_classes[] = 'elzo-forms-column-' . ($keypoint == 'xs' ? $column_size : $keypoint . '-' . $column_size);
+            $width_classes[] = 'elzo-forms-column-' . ($keypoint === 'xs' ? $column_size : $keypoint . '-' . $column_size);
         }
 
         return implode(' ', $width_classes);

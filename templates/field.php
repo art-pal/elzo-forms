@@ -12,7 +12,7 @@
  *
  * @see         Plugin documentation
  * @package     ElzoForms\Templates
- * @version     1.1.0
+ * @version     1.2.0
  *
  * @var \ElzoForms\Field\Field $field Field object
  * @var int $form_id Form ID
@@ -28,7 +28,10 @@
  * @var bool $shows_label_wrapper Whether to show label wrapper
  * @var bool $shows_under_field Whether to show under field text
  * @var string $field_type Field type
- * @var string $form_instance_suffix DOM ID suffix for repeated form instances
+ * @var string $label_id HTML ID of the label
+ * @var string $description_id HTML ID of the text under the label
+ * @var string $help_id HTML ID of the text under the field
+ * @var string $form_instance_suffix Deprecated: ID suffix of Elzo Forms 1.1 for repeated forms
  */
 
 // Exit if accessed directly
@@ -37,24 +40,24 @@ defined('ABSPATH') || exit;
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- This template is loaded via Template_Loader::load_template() (function scope), so variables here are function-scoped, not globals.
 
 ?>
-<div <?php echo $field->get_wrapper_attributes($form_instance_suffix ?? ''); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Attributes are escaped in Field::get_wrapper_attributes(). ?>>
+<div <?php echo $field->get_wrapper_attributes(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Attributes are escaped in Field::get_wrapper_attributes(). ?>>
     <?php if($shows_label_wrapper){ ?>
         <div class="elzo-forms-field-label-wrapper">
             <?php if($label){ ?>
                 <?php if(in_array($field_type, ['checkbox', 'radio'], true)){ ?>
-                    <div id="<?php echo esc_attr($id); ?>-label" class="elzo-forms-field-label">
+                    <div id="<?php echo esc_attr($label_id); ?>" class="elzo-forms-field-label">
                         <?php echo esc_html($label); ?>
                         <?php if($required){ ?><span class="elzo-forms-field-required-mark">*</span><?php } ?>
                     </div>
                 <?php } else { ?>
-                    <label for="<?php echo esc_attr($id); ?>" class="elzo-forms-field-label">
+                    <label for="<?php echo esc_attr($id); ?>" id="<?php echo esc_attr($label_id); ?>" class="elzo-forms-field-label">
                         <?php echo esc_html($label); ?>
                         <?php if($required){ ?><span class="elzo-forms-field-required-mark">*</span><?php } ?>
                     </label>
                 <?php } ?>
             <?php } ?>
             <?php if($under_label){ ?>
-                <div class="elzo-forms-field-under-label"><?php echo wp_kses_post($under_label); ?></div>
+                <div id="<?php echo esc_attr($description_id); ?>" class="elzo-forms-field-under-label"><?php echo wp_kses_post($under_label); ?></div>
             <?php } ?>
         </div>
     <?php } ?>
@@ -72,6 +75,6 @@ defined('ABSPATH') || exit;
         echo $field_html;
     ?>
     <?php if($shows_under_field){ ?>
-        <div class="elzo-forms-field-under-field"><?php echo wp_kses_post($under_field); ?></div>
+        <div id="<?php echo esc_attr($help_id); ?>" class="elzo-forms-field-under-field"><?php echo wp_kses_post($under_field); ?></div>
     <?php } ?>
 </div>

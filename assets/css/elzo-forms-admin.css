@@ -899,6 +899,24 @@ button > .elzo-icon {
     padding-top: 0.5rem;
 }
 
+/* Submissions list: date range filter, lined up with the floated filter selects. */
+.tablenav .elzo-forms-date-range {
+    float: left;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 6px;
+}
+
+.tablenav .elzo-forms-date-range-separator {
+    color: #646970;
+}
+
+/* Submissions list: unread rows, marked without spending a column on it. */
+.wp-list-table tr.elzo-forms-submission-unread td.check-column {
+    box-shadow: inset 3px 0 0 var(--wp-admin-theme-color, #0073aa);
+}
+
 /* OTHER */
 
 @keyframes elzo-forms-loading-opacity {
@@ -2127,4 +2145,60 @@ button > .elzo-icon {
         outline: 2px solid Highlight;
         outline-offset: -2px;
     }
+}
+/* Submission file values */
+.elzo-submission-files {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.elzo-submission-files li {
+    margin: 0;
+    min-width: 0;
+}
+.elzo-submission-file-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+}
+.elzo-submission-file-visual {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #f0f0f1;
+    color: #646970;
+}
+.elzo-submission-file-preview {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+.elzo-submission-file-visual .dashicons {
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+}
+.elzo-submission-file-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+}
+.elzo-submission-file-extension {
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 16px;
+    letter-spacing: 0.5px;
 }
